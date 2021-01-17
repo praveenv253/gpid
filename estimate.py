@@ -63,7 +63,7 @@ def heuristic_channel(di,do,hi,ho,sigi,sigo,sigm,verbose=False):
 	objective = cp.Minimize(cp.norm(Ai@t@hi@sqrtm-Ai@ho@sqrtm,'fro'))
 	constraints = [M >> 0]
 	prob = cp.Problem(objective,constraints)
-	result = prob.solve(alpha=1,max_iters=10000,eps=1e-10)
+	result = prob.solve(solver='SCS',verbose=False,alpha=1,max_iters=50000,eps=1e-10)
 	t = t.value
 
 	sigt = sigo + ho.dot(sigm).dot(ho.T) - t.dot(sigi + hi.dot(sigm).dot(hi.T)).dot(t.T)

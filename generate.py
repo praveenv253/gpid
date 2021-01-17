@@ -9,8 +9,9 @@ Description: Functions for generating a multivariate Gaussian System
 
 import numpy as np
 import scipy
+from scipy.stats import wishart
 
-def generate_system(system='random',dm=5,dx=5,dy=5):
+def generate_system(system='random',dm=5,dx=5,dy=5,dof=0,V=None):
 	"""
 	Generate appropriate gain and covariance matrices
 
@@ -29,6 +30,16 @@ def generate_system(system='random',dm=5,dx=5,dy=5):
 	
 	dy : int
 		dimensionality of Y vector
+
+	dof : int
+		number of degrees of freedom for generating covariance matrix
+		from Wishart distribution. if n < dm+dx+dy, it will 
+		default to n = dm+dx+dy
+		***only applies when system=='random'
+
+	V : np.ndarray [dm+dx+dy,dm+dx+dy]
+		Wishart scale matrix. defaults to identity.		
+		***only applies when system=='random'
 
 	Returns
 	-------
@@ -62,14 +73,22 @@ def generate_system(system='random',dm=5,dx=5,dy=5):
 			   'only one unique',
 			   'one is very unique',
 			   'some of each',
-			   'univariate']
+			   'univariate',
+			   'overdetermined']
 
-	assert system in systems, 'system must be on of {systems}'
+	assert system in systems, f'system must be on of {systems}'
 
+	# generate random system with Wishart distributed covariance matrix
 	if system == 'random':
+
 		# generate the full covariance matrices and submatrices
-		cov = np.random.randn(dm+dx+dy,dm+dx+dy)
-		cov = np.dot(cov,cov.T)
+		mean = np.zeros(dm+dx+dy)
+		if V is None:
+			V = np.eye(dm+dx+dy)
+		if dof < dm+dx+dy:
+			dof = dm+dx+dy
+		G = np.random.multivariate_normal(mean,V,dof)
+		cov = np.dot(G,G.T)
 		covm = cov[:dm,:dm]
 		covx = cov[dm:dm+dx,dm:dm+dx]
 		covy = cov[dm+dx:dm+dx+dy,dm+dx:dm+dx+dy]
@@ -117,7 +136,7 @@ def generate_system(system='random',dm=5,dx=5,dy=5):
 		sigx = 4*np.eye(dx)
 		sigy = 0.01*np.eye(dy)
 		
-	# would expect one to be deficient but want to ensure it is also fully redundant
+	# would X is fully redundant
 	elif system == 'one is very unique':
 		dm = 10
 		dx = 1
@@ -132,7 +151,7 @@ def generate_system(system='random',dm=5,dx=5,dy=5):
 		sigx = 1*np.eye(dx)
 		sigy = 1*np.eye(dy)
 		
-	# would expect one to be deficient but not the other
+	# expect some uniqueness and some redundancy
 	elif system == 'some of each':
 		dm = 3
 		dx = 2
@@ -146,7 +165,7 @@ def generate_system(system='random',dm=5,dx=5,dy=5):
 		sigx = np.eye(dx)
 		sigy = np.eye(dy)
 		
-	# can compare with Barrett results
+	# the system considered by Barrett
 	elif system == 'univariate':
 		dm = 1
 		dx = 1
@@ -159,6 +178,7 @@ def generate_system(system='random',dm=5,dx=5,dy=5):
 		sigx = np.eye(dx) - hx.dot(sigm).dot(hx.T)
 		sigy = np.eye(dy) - hy.dot(sigm).dot(hy.T)
 
+	# for the non-random systems, get necessary matrices for MI calculation
 	if system != 'random':
 		hxy = np.vstack((hx,hy))
 		sigxy = np.bmat([[sigx,np.zeros((dx,dy))],[np.zeros((dy,dx)),sigy]])
@@ -166,8 +186,6 @@ def generate_system(system='random',dm=5,dx=5,dy=5):
 		covy = sigy + hy.dot(sigm).dot(hy.T)
 		covxy = np.bmat([[covx,np.zeros((dx,dy))],[np.zeros((dy,dx)),covy]])
 
-
-		
 	# whiten
 	hx = scipy.linalg.sqrtm(np.linalg.inv(sigx)).dot(hx)
 	sigx = np.eye(dx)
