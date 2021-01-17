@@ -9,7 +9,7 @@ import sys
 
 def experiment(n=10):
 	"""
-	Generate appropriate gain and covariance matrices
+	Run n experiments and save the results in a csv file
 
 	Param
 	-----------
