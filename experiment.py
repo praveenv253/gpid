@@ -6,6 +6,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
 import sys
+import random
+import time
+
 
 def experiment(n=10):
 	"""
@@ -24,6 +27,8 @@ def experiment(n=10):
 	imxs = []
 	imys = []
 	imxys = []
+	defxs = []
+	defys = []
 	uixs = []
 	uiys = []
 	ris = []
@@ -34,7 +39,9 @@ def experiment(n=10):
 	countu = 0
 	nu = 0
 	for i in range(n):
-		flag = ''
+
+		if np.mod(i,1000)==0:
+			print(f'------- Completed {i} Simulations -------')
 
 		try:
 			# dm < dx <= dy
@@ -64,40 +71,66 @@ def experiment(n=10):
 			# WLOG assume dx <= dy
 			dx = min(d1,d2)
 			dy = max(d1,d2)
+
+
 			# generate a random multivariate system
 			hx,hy,hxy,sigx,sigy,sigxy,covxy,sigm = generate_system(dm=dm,dx=dx,dy=dy)
-			# estimate the PID
-			imx,imy,imxy,defx,defy,uix,uiy,ri,si = approx_pid(hx,hy,hxy,sigx,sigy,sigxy,covxy,sigm)
-			# failure checks
-			if ri <= 0:
-				countr += 1
-				flag += '   negative redundancy \n'
-			if si <= 0: 
-				counts += 1
-				flag += '   negative synergy \n'
-			if dm == 1:
-				nu += 1
-				if (uix > 0.00001) and (uiy > 0.00001):
-					countu += 1
-					flag += '   both have unique with univariate message \n'
+			
 
-			if flag != '':
-				print('--------------')
-				print('Warnings:')
-				print(flag)
-				print(f"RI: {ri}")
-				print(f"SI: {si}")
-				print(f"UIX: {uix}")
-				print(f"UIY: {uiy}")
-				print(f"imx: {imx}")
-				print(f"imy: {imy}")
-				print(f"imxy: {imxy}")
-				print(f"defx: {defx}")
-				print(f"defy: {defy}")
-				print(f"hx: {hx}")
-				print(f"hy: {hy}")
-				print(f"covxy: {covxy}")
-				print('--------------')
+			attempt = 1
+			solved = False
+			while not solved:
+				flag = ''
+
+				# estimate the PID
+				imx,imy,imxy,defx,defy,uix,uiy,ri,si = approx_pid(hx,hy,hxy,sigx,sigy,sigxy,covxy,sigm,
+										maxiter=attempt*5000,eps=1*(10**(-10+attempt)))
+				# failure checks
+				if ri <= 0:
+					flag += '   negative redundancy \n'
+				if si <= 0: 
+					flag += '   negative synergy \n'
+				if dm == 1:
+					if (uix > 0.00001) and (uiy > 0.00001):
+						flag += '   both have unique with univariate message \n'
+
+				if flag != '':
+					print('--------------')
+					print(f'Warnings in Simulation {i} attempt {attempt}:')
+					print(flag)
+					print(f"RI: {ri}")
+					print(f"SI: {si}")
+					print(f"UIX: {uix}")
+					print(f"UIY: {uiy}")
+					print(f"imx: {imx}")
+					print(f"imy: {imy}")
+					print(f"imxy: {imxy}")
+					print(f"defx: {defx}")
+					print(f"defy: {defy}")
+					print(f"hx: {hx}")
+					print(f"hy: {hy}")
+					print(f"dm: {dm}")
+					print(f"dx: {dx}")
+					print(f"dy: {dy}")
+					print('--------------')
+				
+					if attempt == 10:
+						if ri <= 0:
+							count_r += 1
+						if si <= 0: 
+							count_s += 1
+						if dm == 1:
+							if (uix > 0.00001) and (uiy > 0.00001):
+								count_u += 1
+						break
+					else:
+						attempt += 1
+
+
+				else:
+					if attempt > 1:
+						print("Success!")
+					solved = True
 
 			# store results
 			dms.append(dm)
@@ -106,12 +139,17 @@ def experiment(n=10):
 			imxs.append(imx)
 			imys.append(imy)
 			imxys.append(imxy)
+			defxs.append(defx)
+			defys.append(defy)
 			uixs.append(uix)
 			uiys.append(uiy)
 			ris.append(ri)
 			sis.append(si)
 			flags.append(flag)
 		
+		except KeyboardInterrupt:
+			sys.exit()
+
 		# if something breaks down, print and stor relevant details
 		except:
 			print('--------------')
@@ -127,6 +165,8 @@ def experiment(n=10):
 			imxs.append(imx)
 			imys.append(imy)
 			imxys.append(imxy)
+			defxs.append(0)
+			defys.append(0)
 			uixs.append(0)
 			uiys.append(0)
 			ris.append(0)
@@ -139,7 +179,7 @@ def experiment(n=10):
 	if counts > 0:
 		print(f"NEGATIVE SYNERGY {counts} OF {n} EXPERIMENTS")
 	if countu > 0:
-		print(f"NEGATIVE SYNERGY {countu} OF {nu} EXPERIMENTS WITH dm==1")
+		print(f"BOTH HAVE UNIQUE WITH dm==1 IN {countu} EXPERIMENTS")
 
 	# create dataframe
 	dic = {
@@ -149,6 +189,8 @@ def experiment(n=10):
 		'imx':imxs,
 		'imy':imys,
 		'imxy':imxys,
+		'defx':defxs,
+		'defy':defys,
 		'uix':uixs,
 		'uiy':uiys,
 		'ri':ris,
@@ -184,5 +226,11 @@ def test_examples():
 		print(f"SI: {si}")
 		
 if __name__ == '__main__':
+	random.seed(2010)
+	np.random.seed(2010)
+
+	start = time.perf_counter()
 	experiment(n=80000)
+	end = time.perf_counter()
+	print(f'Experiment Completed. Time: {(end-start)/60}  Minutes')
 	test_examples()

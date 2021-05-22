@@ -11,7 +11,8 @@ import numpy as np
 import scipy
 import cvxpy as cp
 
-def heuristic_channel(di,do,hi,ho,sigi,sigo,sigm,verbose=False):
+def heuristic_channel(di,do,hi,ho,sigi,sigo,sigm,
+				verbose=False,maxiter=5000,eps=1e-10):
 	"""
 	Approximate the deficiency-minimizing channel from a input to 
 	a output conditioned on M. For example, when considering
@@ -54,16 +55,16 @@ def heuristic_channel(di,do,hi,ho,sigi,sigo,sigm,verbose=False):
 	"""
 
 	t = cp.Variable((do,di))
-	A = sigo + ho.dot(sigm).dot(ho.T)
-	C = np.linalg.inv(sigi + hi.dot(sigm).dot(hi.T))
+	A = sigo + ho@sigm@ho.T
+	C = np.linalg.inv(sigi + hi@sigm@hi.T)
 	B = t
 	M = cp.bmat([[A,B],[B.T,C]])
-	Ai = scipy.linalg.sqrtm(np.linalg.inv(A))
+	Ai = scipy.linalg.sqrtm(np.linalg.inv(sigo + ho@sigm@ho.T))
 	sqrtm = scipy.linalg.sqrtm(sigm)
 	objective = cp.Minimize(cp.norm(Ai@t@hi@sqrtm-Ai@ho@sqrtm,'fro'))
 	constraints = [M >> 0]
 	prob = cp.Problem(objective,constraints)
-	result = prob.solve(solver='SCS',verbose=False,alpha=1,max_iters=50000,eps=1e-10)
+	result = prob.solve(solver='SCS',verbose=False,alpha=1,max_iters=maxiter,eps=eps)
 	t = t.value
 
 	sigt = sigo + ho.dot(sigm).dot(ho.T) - t.dot(sigi + hi.dot(sigm).dot(hi.T)).dot(t.T)
@@ -76,11 +77,7 @@ def heuristic_channel(di,do,hi,ho,sigi,sigo,sigm,verbose=False):
 		if((wclip != w).any()):
 			print('Negative eigenvalues:')
 			print(w)
-		print('Estimated channel gain matrix:')
-		print(t)
-		print('Estimated channel covariance matrix:')
-		print(sigt)
-
+		
 	return t,sigt
 
 
@@ -118,7 +115,7 @@ def exp_mvar_kl(h1,sig1,h2,sig2,sigm):
 	return 0.5*(t1-t2+t3+t4)
 
 
-def approx_pid(hx,hy,hxy,sigx,sigy,sigxy,covxy,sigm):
+def approx_pid(hx,hy,hxy,sigx,sigy,sigxy,covxy,sigm,maxiter=5000,eps=1e-10):
 	"""
 	Approximate a PID using the outputs from the generate function
 
@@ -192,7 +189,7 @@ def approx_pid(hx,hy,hxy,sigx,sigy,sigxy,covxy,sigm):
 	defx = exp_mvar_kl(hy,sigy,t.dot(hx),t.dot(sigx).dot(t.T) + sigt,sigm)
 
 	# approximate channel Y->X
-	t,sigt = heuristic_channel(dy,dx,hy,hx,sigy,sigx,sigm)
+	t,sigt = heuristic_channel(dy,dx,hy,hx,sigy,sigx,sigm,maxiter=maxiter,eps=eps)
 	# get deficiency of Y w.r.t. X
 	defy = exp_mvar_kl(hx,sigx,t.dot(hy),t.dot(sigy).dot(t.T) + sigt,sigm)
 
