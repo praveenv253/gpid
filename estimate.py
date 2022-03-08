@@ -24,25 +24,18 @@ def heuristic_channel(di, do, hi, ho, sigi, sigo, sigm,
     -----------
     di : int
             dimension of input
-
     do : int
             dimension of output
-
     hi : np.ndarray [di,dm]
             channel gain matrix for M->input
-
     ho : np.ndarray [do,dm]
             channel gain matrix for M->output
-
     sigi : np.ndarray [di,di]
             channel covariance matrix for M->input
-
     sigo : np.ndarray [do,do]
             channel covariance matrix for M->output
-
     sigm : np.ndarray [dm,dm]
             covariance matrix for M
-
     verbose : bool
             whether or not to print
 
@@ -50,27 +43,26 @@ def heuristic_channel(di, do, hi, ho, sigi, sigo, sigm,
     -------
     t : np.ndarray [do,di]
             channel gain matrix for input->output
-
     sigt : np.ndarray [do,do]
             channel covariance matrix for input->output
     """
 
     t = cp.Variable((do, di))
-    A = sigo + ho@sigm@ho.T
-    C = np.linalg.inv(sigi + hi@sigm@hi.T)
+    A = sigo + ho @ sigm @ ho.T
+    C = np.linalg.inv(sigi + hi @ sigm @ hi.T)
     B = t
     M = cp.bmat([[A, B], [B.T, C]])
-    Ai = scipy.linalg.sqrtm(np.linalg.inv(sigo + ho@sigm@ho.T))
+    Ai = scipy.linalg.sqrtm(np.linalg.inv(sigo + ho @ sigm @ ho.T))
     sqrtm = scipy.linalg.sqrtm(sigm)
-    objective = cp.Minimize(cp.norm(Ai@t@hi@sqrtm-Ai@ho@sqrtm, 'fro'))
+    objective = cp.Minimize(cp.norm(Ai @ t @ hi @ sqrtm - Ai @ ho @ sqrtm, 'fro'))
     constraints = [M >> 0]
     prob = cp.Problem(objective, constraints)
     result = prob.solve(solver='SCS', verbose=True,
                         alpha=1, max_iters=maxiter, eps=eps)
     t = t.value
 
-    sigt = sigo + ho.dot(sigm).dot(ho.T) - t.dot(sigi +
-                                                 hi.dot(sigm).dot(hi.T)).dot(t.T)
+    #sigt = sigo + ho.dot(sigm).dot(ho.T) - t.dot(sigi + hi.dot(sigm).dot(hi.T)).dot(t.T)
+    sigt = sigo + ho @ sigm @ ho.T - t @ (sigi + hi @ sigm @ hi.T) @ t.T
 
     w, v = np.linalg.eigh(sigt)
     sigt = v.dot(np.diag(w)).dot(v.T)
@@ -94,16 +86,12 @@ def exp_mvar_kl(h1, sig1, h2, sig2, sigm):
     -----------
     h1 : np.ndarray
             KLD first argument channel gain matrix
-
     sig1 : np.ndarray
             KLD first argument channel covariance matrix
-
     h2 : np.ndarray
             KLD second argument channel gain matrix
-
     sig2 : np.ndarray
             KLD secondt argument channel covariance matrix
-
     sigm : np.ndarray
             covariance matrix for channel input
 
@@ -129,25 +117,18 @@ def approx_pid(hx, hy, hxy, sigx, sigy, sigxy, covxy, sigm, maxiter=5000, eps=1e
     -----------
     hx : np.ndarray [dx,dm]
             channel gain matrix for M->X (i.e. X|M has mean hx.dot(M))
-
     hy : np.ndarray [dy,dm]
             channel gain matrix for M->Y
-
     hxy : np.ndarray [dx+dy,m]
             channel gain matrix for M->(X,Y)
-
     sigx : np.ndarray [dx,dx]
             channel covariance matrix for M->X (i.e. X|M has cov sigx)
-
     sigy : np.ndarray [dy,dy]
             channel covariance matrix for M->Y
-
     sigxy : np.ndarray [dx+dy,dx+dy]
             channel covariance matrix for M->(X,Y)
-
     covxy : np.ndarray [dx+dy,dx+dy]
             covariance matrix for (X,Y)
-
     sigm : np.ndarray [dm,dm]
             covariance matrix for M
 
@@ -155,28 +136,20 @@ def approx_pid(hx, hy, hxy, sigx, sigy, sigxy, covxy, sigm, maxiter=5000, eps=1e
     -------
     imx : float
             mutual information between M and X
-
     imy : float
             mutual information between M and Y
-
     imxy : float
             mutual information between M and (X,Y)
-
     defx : float
             deficiency of X w.r.t. Y
-
     defy : float
             deficiency of Y w.r.t. X
-
     uix : float
             unique information in X (about M, unique w.r.t Y)
-
     uiy : float
             unique information in Y
-
     ri : float
             redundant information in X and Y
-
     si : float
             synergistic information in X and Y
     """
@@ -209,3 +182,12 @@ def approx_pid(hx, hy, hxy, sigx, sigy, sigxy, covxy, sigm, maxiter=5000, eps=1e
     si = imxy-uix-uiy-ri
 
     return imx, imy, imxy, defx, defy, uix, uiy, ri, si
+
+
+def approx_pid_from_cov(cov, dm, dx, dy):
+    """
+    Compute the approximate Gaussian PID from a covariance matrix.
+    """
+
+    params = lin_tf_params_from_cov(cov, dm, dx, dy)
+    return approx_pid(*params)
