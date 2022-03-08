@@ -11,6 +11,8 @@ import numpy as np
 import scipy
 import cvxpy as cp
 
+from utils import lin_tf_params_from_cov
+
 
 def heuristic_channel(di, do, hi, ho, sigi, sigo, sigm,
                       verbose=False, maxiter=5000, eps=1e-10):
