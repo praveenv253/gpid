@@ -10,6 +10,7 @@ Description: Functions for approximating a Gaussian PID
 import numpy as np
 import scipy
 import cvxpy as cp
+import warnings
 
 from utils import lin_tf_params_from_cov
 
@@ -61,6 +62,12 @@ def heuristic_channel(di, do, hi, ho, sigi, sigo, sigm,
     prob = cp.Problem(objective, constraints)
     result = prob.solve(solver='SCS', verbose=True,
                         alpha=1, max_iters=maxiter, eps=eps)
+
+    if 'unbounded' in prob.status or 'infeasible' in prob.status:
+        raise ValueError('Convex problem was %s' % prob.status)
+    if 'inaccurate' in prob.status:
+        warnings.warn('Inaccurate solution')
+
     t = t.value
 
     #sigt = sigo + ho.dot(sigm).dot(ho.T) - t.dot(sigi + hi.dot(sigm).dot(hi.T)).dot(t.T)
