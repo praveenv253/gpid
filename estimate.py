@@ -12,7 +12,7 @@ import scipy
 import cvxpy as cp
 import warnings
 
-from utils import lin_tf_params_from_cov
+from .utils import lin_tf_params_from_cov
 
 
 def heuristic_channel(di, do, hi, ho, sigi, sigo, sigm,
@@ -60,7 +60,7 @@ def heuristic_channel(di, do, hi, ho, sigi, sigo, sigm,
     objective = cp.Minimize(cp.norm(Ai @ t @ hi @ sqrtm - Ai @ ho @ sqrtm, 'fro'))
     constraints = [M >> 0]
     prob = cp.Problem(objective, constraints)
-    result = prob.solve(solver='SCS', verbose=True,
+    result = prob.solve(solver='SCS', verbose=verbose,
                         alpha=1, max_iters=maxiter, eps=eps)
 
     if 'unbounded' in prob.status or 'infeasible' in prob.status:
@@ -118,7 +118,7 @@ def exp_mvar_kl(h1, sig1, h2, sig2, sigm):
     return 0.5 * (t1 - t2 + t3 + t4)
 
 
-def approx_pid(hx, hy, hxy, sigx, sigy, sigxy, covxy, sigm, maxiter=5000, eps=1e-10):
+def approx_pid(hx, hy, hxy, sigx, sigy, sigxy, covxy, sigm, maxiter=5000, eps=1e-10, verbose=True, ret_t_sigt=False):
     """
     Approximate a PID using the outputs from the generate function
 
@@ -173,30 +173,37 @@ def approx_pid(hx, hy, hxy, sigx, sigy, sigxy, covxy, sigm, maxiter=5000, eps=1e
                       hy.dot(sigm).dot(hy.T) + sigy, sigm)
     imxy = exp_mvar_kl(hxy, sigxy, np.zeros_like(hxy), covxy, sigm)
 
-    # approximate channel X->Y
-    t, sigt = heuristic_channel(dx, dy, hx, hy, sigx, sigy, sigm)
-    # get deficiency of X w.r.t. Y
-    defx = exp_mvar_kl(hy, sigy, t.dot(hx), t.dot(sigx).dot(t.T) + sigt, sigm)
-
-    # approximate channel Y->X
+    # approximate channel Y-> X (unique info in X)
     t, sigt = heuristic_channel(dy, dx, hy, hx, sigy, sigx, sigm,
-                                maxiter=maxiter, eps=eps)
+                                verbose=verbose, maxiter=maxiter, eps=eps)
     # get deficiency of Y w.r.t. X
-    defy = exp_mvar_kl(hx, sigx, t.dot(hy), t.dot(sigy).dot(t.T) + sigt, sigm)
+    def_x_minus_y = exp_mvar_kl(hx, sigx, t @ hy, t @ sigy @ t.T + sigt, sigm)
+    tx, sigtx = t.copy(), sigt.copy()
+
+    # approximate channel X->Y
+    t, sigt = heuristic_channel(dx, dy, hx, hy, sigx, sigy, sigm,
+                                verbose=verbose, maxiter=maxiter, eps=eps)
+    # get deficiency of X w.r.t. Y (unique info in Y)
+    def_y_minus_x = exp_mvar_kl(hy, sigy, t @ hx, t @ sigx @ t.T + sigt, sigm)
+    ty, sigty = t.copy(), sigt.copy()
 
     # compute PID
-    ri = min(imx-defy, imy-defx)
-    uix = imx-ri
-    uiy = imy-ri
-    si = imxy-uix-uiy-ri
+    ri = min(imx - def_x_minus_y, imy - def_y_minus_x)
+    uix = imx - ri
+    uiy = imy - ri
+    si = imxy - uix - uiy - ri
 
-    return imx, imy, imxy, defx, defy, uix, uiy, ri, si
+    ret = (imx, imy, imxy, def_y_minus_x, def_x_minus_y, uix, uiy, ri, si)
+    if ret_t_sigt:
+        ret = (*ret, tx, sigtx, ty, sigty)
+
+    return ret
 
 
-def approx_pid_from_cov(cov, dm, dx, dy):
+def approx_pid_from_cov(cov, dm, dx, dy, verbose=False, ret_t_sigt=False):
     """
     Compute the approximate Gaussian PID from a covariance matrix.
     """
 
     params = lin_tf_params_from_cov(cov, dm, dx, dy)
-    return approx_pid(*params)
+    return approx_pid(*params, verbose=verbose, ret_t_sigt=ret_t_sigt)
