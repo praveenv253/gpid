@@ -71,6 +71,58 @@ def lin_tf_params_from_cov(cov, dm, dx, dy):
     return hx, hy, hxy, sigx, sigy, sigxy, covxy, sigm
 
 
+def lin_tf_params_ip_dfncy(cov, dm, dx, dy):
+    covm = cov[:dm, :dm]
+    covx = cov[dm:dm+dx, dm:dm+dx]
+    covy = cov[dm+dx:, dm+dx:]
+    covxy = cov[dm:, dm:]
+    covx_m = cov[:dm, dm:dm+dx].T
+    covy_m = cov[:dm, dm+dx:].T
+    covxy_m = cov[:dm, dm:].T
+
+    sigm = covm
+    gx = covx_m @ la.sqrtm(la.inv(covy))
+    gy = covy_m @ la.inv(covy)
+    sigx = covx
+
+    return gx, gy, sigm, sigx, sigy, sigx_m, sigy_m
+
+
+def lin_tf_params_bert(cov, dm, dx, dy):
+    covm = cov[:dm, :dm]
+    covx = cov[dm:dm+dx, dm:dm+dx]
+    covy = cov[dm+dx:, dm+dx:]
+    covxy = cov[dm:, dm:]
+    covx_m = cov[:dm, dm:dm+dx].T
+    covy_m = cov[:dm, dm+dx:].T
+    covxy_m = cov[:dm, dm:].T
+    covx_y = cov[dm:dm+dx, dm+dx:]
+
+    ## Standardize M, X and Y and re-compute cross-covariances
+
+    covm_sqrt = la.sqrtm(covm)  # TODO: Check that this is symmetric-sqrt
+    covx_sqrt = la.sqrtm(covx)
+    covy_sqrt = la.sqrtm(covy)
+
+    # Just think of hx as the (standardized) cross-covariance between X and M
+    hx = la.solve(covx_sqrt, la.solve(covm_sqrt, covx_m.T).T)
+    hy = la.solve(covy_sqrt, la.solve(covm_sqrt, covy_m.T).T)
+    # Standardized cross-covariance between X and Y
+    sigx_y = la.solve(covx_sqrt, la.solve(covy_sqrt, covx_y.T).T)
+
+    # Here, sigx and sigy are also just referring to the standardized
+    # auto-covariance matrices, not the conditional covariance matrices
+    sigm = np.eye(dm)
+    sigx = np.eye(dx)
+    sigy = np.eye(dy)
+
+    # Also pass on some block matrices
+    hxy = np.vstack((hx, hy))
+    sigxy = np.block([[sigx, sigx_y], [sigx_y.T, sigy]])
+
+    return hx, hy, sigx_y, sigm, sigx, sigy, hxy, sigxy
+
+
 def remove_lin_dep_comps(cov, dm, dx, dy):
     # XXX: Untested
     """
