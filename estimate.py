@@ -56,6 +56,7 @@ def heuristic_channel(di, do, hi, ho, sigi, sigo, sigm,
     B = t
     M = cp.bmat([[A, B], [B.T, C]])
     Ai = scipy.linalg.sqrtm(np.linalg.inv(sigo + ho @ sigm @ ho.T))
+    #Ai = np.eye(do, do)
     sqrtm = scipy.linalg.sqrtm(sigm)
     objective = cp.Minimize(cp.norm(Ai @ t @ hi @ sqrtm - Ai @ ho @ sqrtm, 'fro'))
     constraints = [M >> 0]
@@ -109,13 +110,14 @@ def exp_mvar_kl(h1, sig1, h2, sig2, sigm):
     expected kl divergence : float
     """
     #t1 = np.log(np.linalg.det(sig2)/np.linalg.det(sig1))
-    t1 = (np.linalg.slogdet(sig2)[1] - np.linalg.slogdet(sig1)[1]) / np.log(2)
+    t1 = np.linalg.slogdet(sig2)[1] - np.linalg.slogdet(sig1)[1]
     t2 = h1.shape[0]
     #t3 = np.trace(np.linalg.inv(sig2).dot(sig1))
     t3 = np.trace(scipy.linalg.solve(sig2, sig1, assume_a='pos'))
     #t4 = np.trace(sigm.dot((h2-h1).T).dot(np.linalg.inv(sig2)).dot(h2-h1))
     t4 = np.trace(sigm @ (h2-h1).T @ scipy.linalg.solve(sig2, h2-h1, assume_a='pos'))
-    return 0.5 * (t1 - t2 + t3 + t4)
+    #print('\n\n\n%g\n\n\n' % (0.5 * (t1 + t3 + t4 - t2) / np.log(2)))
+    return 0.5 * (t1 - t2 + t3 + t4) / np.log(2)
 
 
 def approx_pid(hx, hy, hxy, sigx, sigy, sigxy, covxy, sigm, maxiter=5000, eps=1e-10, verbose=True, ret_t_sigt=False):
