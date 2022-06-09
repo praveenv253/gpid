@@ -299,7 +299,7 @@ def exact_bert_pytorch(cov, dm, dx, dy, verbose=False, ret_t_sigt=False):
     ret = lin_tf_params_bert(cov, dm, dx, dy)
     hx, hy, sigx_y, sigm, sigx, sigy, hxy, sigxy = ret
     # This sigx is different from the other sigx'es, because it refers to the
-    # standardized autocovariance of X (similarly for sigy).
+    # standardized autocovariance of X (similarly for sigy, sigx_y, etc.).
 
     imx = - 0.5 * npla.slogdet(np.eye(dm) - hx.T @ hx)[1] / np.log(2)
     imy = - 0.5 * npla.slogdet(np.eye(dm) - hy.T @ hy)[1] / np.log(2)

@@ -6,6 +6,66 @@ import numpy as np
 import scipy.linalg as la
 
 
+def solve(a, b):
+    return la.solve(a, b, assume_a='pos')
+
+
+def whiten(cov, dm, dx, dy, ret_channel_params=False):
+    """
+    Whiten the X- and Y-channel noise covariances, and return a new joint
+    covariance matrix between M, X and Y.
+
+    Also standardizes the covariance of M to an identity matrix.
+
+    Assumes invertibility of matrices where required:
+        sig_m, sig_x__m, sig_y__m
+    """
+
+    # Variable name convention
+    # - No separator implies joint auto-covariance between variables
+    # - One underscore refers to cross-covariance between variables
+    # - Two underscores refers to conditioning
+    #
+    # Examples
+    # - sig_mxy: joint (auto-)covariance between M, X and Y
+    # - sig_xy_m: cross-covariance between the stacked vector (X, Y) and M
+    # - sig_x_m__y: conditional cross-covariance matrix between X and M given Y
+
+    # First standardize M
+    sig_mxy = cov.copy()
+    sig_m = cov[:dm, :dm]
+    sig_mxy[:, :dm] = solve(la.sqrtm(sig_m), sig_mxy[:, :dm].T).T
+    sig_mxy[:dm, :] = solve(la.sqrtm(sig_m), sig_mxy[:dm, :])
+    sig_m = sig_mxy[:dm, :dm]  # Redefine sig_m
+
+    # Extract necessary parameters
+    sig_x = sig_mxy[dm:dm+dx, dm:dm+dx]
+    sig_y = sig_mxy[dm+dx:, dm+dx:]
+    sig_x_m = sig_mxy[dm:dm+dx, :dm]  # Also equal to hx pre-whitening
+    sig_y_m = sig_mxy[dm+dx:, :dm]    # Also equal to hy pre-whitening
+
+    # Compute channel noise covariance matrices (TODO: Skip the solve here because sig_m = I?)
+    sig_x__m = sig_x - sig_x_m @ solve(sig_m, sig_x_m.T)
+    sig_y__m = sig_y - sig_y_m @ solve(sig_m, sig_y_m.T)
+
+    # Whiten the X-channel
+    sig_mxy[:, dm:dm+dx] = solve(la.sqrtm(sig_x__m), sig_mxy[:, dm:dm+dx].T).T
+    sig_mxy[dm:dm+dx, :] = solve(la.sqrtm(sig_x__m), sig_mxy[dm:dm+dx, :])
+
+    # Whiten the Y-channel
+    sig_mxy[:, dm+dx:] = solve(la.sqrtm(sig_y__m), sig_mxy[:, dm+dx:].T).T
+    sig_mxy[dm+dx:, :] = solve(la.sqrtm(sig_y__m), sig_mxy[dm+dx:, :])
+
+    # Extract the final joint covariance of (X, Y) given M
+    sig_xy = sig_mxy[dm:, dm:]
+    sig_xy_m = sig_mxy[dm:, :dm]
+    sig_xy__m = sig_xy - sig_xy_m @ solve(sig_m, sig_xy_m.T) # TODO: Skip solve?
+
+    if ret_channel_params:
+        return sig_mxy, sig_x_m, sig_y_m, sig_xy_m, sig_xy__m
+    return sig_mxy
+
+
 def lin_tf_params_from_cov(cov, dm, dx, dy):
     """
     Utility function to extract linear transform parameters from a covariance
@@ -68,6 +128,8 @@ def lin_tf_params_from_cov(cov, dm, dx, dy):
     hy = la.sqrtm(la.inv(sigy)).dot(hy)
     sigy = np.eye(dy)
 
+    # XXX: sigxy is *not* whitened here!!!
+
     return hx, hy, hxy, sigx, sigy, sigxy, covxy, sigm
 
 
@@ -89,6 +151,10 @@ def lin_tf_params_ip_dfncy(cov, dm, dx, dy):
 
 
 def lin_tf_params_bert(cov, dm, dx, dy):
+    # XXX: Inconsistency: sigx, sigx_y, sigxy etc. refer to the respective auto-
+    # or cross-covariance matrices in this function, *not* the conditional
+    # covariance matrices (given M) as in lin_tf_params_from_cov.
+
     covm = cov[:dm, :dm]
     covx = cov[dm:dm+dx, dm:dm+dx]
     covy = cov[dm+dx:, dm+dx:]
