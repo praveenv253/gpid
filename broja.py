@@ -15,7 +15,30 @@ from .utils import whiten, lin_tf_params_from_cov, lin_tf_params_bert
 from .estimate import exp_mvar_kl
 
 
-def exact_bert_union_info_minimizer(hx_, hy_):
+def project(sig_temp):
+    dx, dy = sig_temp.shape
+
+    # Project sig back onto the PSD cone
+    covxy__m = np.block([[np.eye(dx), sig_temp],
+                         [sig_temp.T, np.eye(dy)]])
+
+    # Project covxy__m back onto the PSD cone
+    lamda, V = la.eigh(covxy__m)
+    lamda = lamda.real  # Real symmetric matrix should have real eigenvalues
+    V = V.real
+    lamda[lamda < 0] = 0
+    covxy__m = V @ np.diag(lamda) @ V.T
+
+    covx__m = covxy__m[:dx, :dx]
+    covy__m = covxy__m[dx:, dx:]
+
+    # Pull sig out of covxy and re-standardize
+    sig_temp_proj = la.solve(la.sqrtm(covx__m), la.solve(la.sqrtm(covy__m), covxy__m[:dx, dx:].T).T)
+
+    return sig_temp_proj
+
+
+def exact_bert_union_info_minimizer(hx_, hy_, plot=False):
     dx, dm = hx_.shape
     dy, dm_ = hy_.shape
     if dm != dm_:
@@ -32,25 +55,12 @@ def exact_bert_union_info_minimizer(hx_, hy_):
         # (based on the two equations: we can either write it out in terms of
         # hx - sig @ hy or hy - sig.T @ hx)
         sig_temp = hx_ @ la.pinv(hy_)
-
-        covxy__m = np.block([[np.eye(dx), sig_temp],
-                             [sig_temp.T, np.eye(dy)]])
-
-        # Project covxy__m back onto the PSD cone
-        lamda, V = la.eigh(covxy__m)
-        lamda = lamda.real  # Real symmetric matrix should have real eigenvalues
-        V = V.real
-        lamda[lamda < 0] = 0
-        covxy__m = V @ np.diag(lamda) @ V.T
-
-        covx__m = covxy__m[:dx, :dx]
-        covy__m = covxy__m[dx:, dx:]
-
-        # Pull sig out of covxy and re-standardize
-        sig_temp_proj = la.solve(la.sqrtm(covx__m), la.solve(la.sqrtm(covy__m), covxy__m[:dx, dx:].T).T)
+        sig_temp_proj = project(sig_temp)
         sig[:, :] = torch.from_numpy(sig_temp_proj.astype(np.float32))
 
+    # Vanilla gradient descent
     eta_sig = 1e-3  # Learning rate for sig
+
     # Adam parameters
     gamma = 1e-3
     beta1 = 0.9
@@ -60,11 +70,12 @@ def exact_bert_union_info_minimizer(hx_, hy_):
     m_sig = torch.zeros((dx, dy))
     v_sig = torch.zeros((dx, dy))
 
-    noise_std = 0
-    stop_threshold = 1e-4
+    reg = 1e-5       # Regularization in the objective for matrix inverse
+    noise_std = 0    # Standard deviation of noise to add to the gradient
+    stop_threshold = 1e-4  # Absolute difference in objective for stopping
     max_iterations = 10000
     patience = 20    # Number of iterations with small gradient before stopping
-    extra_iters = 0
+    extra_iters = 0  # Number of extra iterations after stop criterion attained
 
     minima = None
     running_obj = []
@@ -74,7 +85,7 @@ def exact_bert_union_info_minimizer(hx_, hy_):
     extra = 0
     while True:
         # Evaluate the objective
-        obj = 0.5 * torch.logdet(torch.eye(dm) + hy.T @ hy + (hx - sig @ hy).T @ torch.linalg.solve((1 + 1e-5) * torch.eye(dx) - sig @ sig.T, (hx - sig @ hy))) / np.log(2)
+        obj = 0.5 * torch.logdet(torch.eye(dm) + hy.T @ hy + (hx - sig @ hy).T @ torch.linalg.solve((1 + reg) * torch.eye(dx) - sig @ sig.T, (hx - sig @ hy))) / np.log(2)
         obj.backward()
 
         with torch.no_grad():
@@ -82,30 +93,21 @@ def exact_bert_union_info_minimizer(hx_, hy_):
                 minima = copy.deepcopy(sig)
 
             g_sig = sig.grad + torch.abs(sig.grad).mean() * noise_std * torch.randn(dx, dy)
+
+            # Adam update
             #m_sig = beta1 * m_sig + (1 - beta1) * g_sig
             #v_sig = beta2 * v_sig + (1 - beta2) * g_sig**2
             #sig -= gamma * (m_sig / (1 - beta1**i)) / (torch.sqrt(v_sig / (1 - beta2**i)) + eps)
+
+            # Vanilla gradient descent update
             sig -= beta3**i * eta_sig * g_sig
 
             # Project sig back onto the PSD cone
             sig_temp = sig.detach().numpy()
             running_sig_pre_proj.append(sig_temp.copy())
-            covxy__m = np.block([[np.eye(dx), sig_temp],
-                                 [sig_temp.T, np.eye(dy)]])
-
-            # Project covxy__m back onto the PSD cone
-            lamda, V = la.eigh(covxy__m)
-            lamda = lamda.real  # Real symmetric matrix should have real eigenvalues
-            V = V.real
-            lamda[lamda < 0] = 0
-            covxy__m = V @ np.diag(lamda) @ V.T
-
-            covx__m = covxy__m[:dx, :dx]
-            covy__m = covxy__m[dx:, dx:]
-
-            # Pull sig out of covxy and re-standardize
-            sig_temp_proj = la.solve(la.sqrtm(covx__m), la.solve(la.sqrtm(covy__m), covxy__m[:dx, dx:].T).T)
+            sig_temp_proj = project(sig_temp)
             running_sig_post_proj.append(sig_temp_proj.copy())
+
             sig[:, :] = torch.from_numpy(sig_temp_proj.astype(np.float32))
 
             if len(running_obj) >= patience:
@@ -124,38 +126,73 @@ def exact_bert_union_info_minimizer(hx_, hy_):
     running_sig_pre_proj = np.array(running_sig_pre_proj).squeeze()
     running_sig_post_proj = np.array(running_sig_post_proj).squeeze()
 
-    plt.semilogy(running_obj)
-    plt.figure()
-    plt.plot(running_sig_pre_proj)
-    plt.plot(running_sig_post_proj)
-    plt.figure()
-    if dx == 2 and dy == 1:
-        x, y = np.mgrid[-1:1:100j, -1:1:100j]
-        sigs = np.moveaxis(np.array((x, y)), 0, 2)
-        objs = []
-        for sig in sigs.reshape((-1, 2)):
-            sig = sig.reshape((dx, dy))
-            if np.any(np.linalg.eigvals(np.eye(dx) - sig @ sig.T) < 0):
-                objs.append(np.nan)
-                continue
-            obj = 0.5 * npla.slogdet(np.eye(dm) + hy_.T @ hy_ + (hx_ - sig @ hy_).T @ la.solve((1 + 1e-5) * np.eye(dx) - sig @ sig.T, (hx_ - sig @ hy_)))[1] / np.log(2)
-            objs.append(obj)
-        objs = np.array(objs).reshape(sigs.shape[:2])
-        plt.pcolormesh(x, y, objs[:-1, :-1], cmap='jet')
-        plt.colorbar()
-        for pre, post in zip(running_sig_pre_proj, running_sig_post_proj):
-            plt.plot([pre[0], post[0]], [pre[1], post[1]], 'k-')
-        for pre, post in zip(running_sig_pre_proj[1:], running_sig_post_proj[:-1]):
-            plt.plot([pre[0], post[0]], [pre[1], post[1]], 'w-')
+    if plot:
+        nrows = 1
+        ncols = 3
+        plt.figure(figsize=(15, 4))
+        plt.subplot(nrows, ncols, 1)
+        plt.semilogy(running_obj)
+        plt.title('Convergence of objective')
+        plt.ylabel('Objective')
+        plt.xlabel('Iteration')
 
-    plt.show()
+        if dx == 1 or dy == 1:
+            plt.subplot(nrows, ncols, 2)
+            plt.plot(running_sig_pre_proj)
+            plt.plot(running_sig_post_proj)
+            plt.title('Convergence of minimizer')
+            plt.ylabel('$\Sigma_i$')
+            plt.xlabel('Iteration')
+
+        if dx == 1 and dy == 1:
+            plt.subplot(nrows, ncols, 3)
+            x_ = np.linspace(-1, 1, 100)
+            x = 0.5 * (x_[1:] + x_[:-1])
+            t = np.arange(len(running_obj) + 1)
+            objs = []
+            for xi in x:
+                sig = np.array([[xi]])
+                if np.any(np.eye(dx) - sig @ sig.T <= 0):
+                    objs.append(np.nan)
+                    continue
+                obj = 0.5 * npla.slogdet(np.eye(dm) + hy_.T @ hy_ + (hx_ - sig @ hy_).T @ la.solve((1 + reg) * np.eye(dx) - sig @ sig.T, (hx_ - sig @ hy_)))[1] / np.log(2)
+                objs.append(obj)
+            objs = np.repeat(np.array(objs).reshape((1, -1)), len(running_obj), axis=0)
+            plt.pcolormesh(t, x_, objs.T, cmap='jet')
+            plt.colorbar()
+            plt.plot(running_sig_post_proj, 'w-')
+
+        if (dx == 2 and dy == 1) or (dx == 1 and dy == 2):
+            plt.subplot(nrows, ncols, 3)
+            x, y = np.mgrid[-1:1:100j, -1:1:100j]
+            sigs = np.moveaxis(np.array((x, y)), 0, 2)
+            objs = []
+            for sig in sigs.reshape((-1, 2)):
+                sig = sig.reshape((dx, dy))
+                if np.any(npla.eigvals(np.eye(dx) - sig @ sig.T) < 0):
+                    objs.append(np.nan)
+                    continue
+                obj = 0.5 * npla.slogdet(np.eye(dm) + hy_.T @ hy_ + (hx_ - sig @ hy_).T @ la.solve((1 + reg) * np.eye(dx) - sig @ sig.T, (hx_ - sig @ hy_)))[1] / np.log(2)
+                objs.append(obj)
+            objs = np.array(objs).reshape(sigs.shape[:2])
+            plt.pcolormesh(x, y, objs[:-1, :-1], cmap='jet')
+            plt.colorbar()
+            #for pre, post in zip(running_sig_pre_proj, running_sig_post_proj):
+            #    plt.plot([pre[0], post[0]], [pre[1], post[1]], 'k-')
+            #for pre, post in zip(running_sig_pre_proj[1:], running_sig_post_proj[:-1]):
+            #    plt.plot([pre[0], post[0]], [pre[1], post[1]], 'w-')
+            #plt.plot(running_sig_pre_proj[:, 0], running_sig_pre_proj[:, 1], 'k-')
+            plt.plot(running_sig_post_proj[:, 0], running_sig_post_proj[:, 1], 'w-')
+            plt.plot(running_sig_post_proj[0, 0], running_sig_post_proj[0, 1], 'ko')
+
+        plt.show()
 
     sig = minima
 
     return sig.detach().numpy()
 
 
-def exact_bert_pytorch(cov, dm, dx, dy, verbose=False, ret_t_sigt=False):
+def exact_bert_pytorch(cov, dm, dx, dy, verbose=False, ret_t_sigt=False, plot=False):
     # NOTE: Not using lin_tf_params_bert
     #ret = lin_tf_params_from_cov(cov, dm, dx, dy)
     #hx, hy, sigx_y, sigm, sigx, sigy, hxy, sigxy = ret
@@ -166,7 +203,7 @@ def exact_bert_pytorch(cov, dm, dx, dy, verbose=False, ret_t_sigt=False):
     imy = 0.5 * npla.slogdet(np.eye(dm) + hy.T @ hy)[1] / np.log(2)
     imxy = 0.5 * npla.slogdet(np.eye(dm) + hxy.T @ la.solve(sigxy, hxy))[1] / np.log(2)
 
-    sig = exact_bert_union_info_minimizer(hx, hy)
+    sig = exact_bert_union_info_minimizer(hx, hy, plot=plot)
     covxy__m = np.block([[np.eye(dx), sig], [sig.T, np.eye(dy)]])
     #covxy = covxy__m + np.vstack((hx, hy)) @ np.vstack((hx, hy)).T
 
