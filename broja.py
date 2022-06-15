@@ -11,37 +11,25 @@ import matplotlib.pyplot as plt
 import scipy.linalg as la
 import numpy.linalg as npla
 
-import torch
-import torch.linalg
-
 from .utils import whiten, lin_tf_params_from_cov, lin_tf_params_bert
 from .estimate import exp_mvar_kl
 
 
 def objective(sig, hx, hy, dm, dx, dy, reg):
-    S = (1 + reg) * torch.eye(dx) - sig @ sig.T
-    B = hx - sig @ hy
-    obj = 0.5 / np.log(2) * torch.logdet(
-        torch.eye(dm) + hy.T @ hy + B.T @ torch.linalg.solve(S, B)
-    )
-    return obj
-
-
-def objective_numpy(sig, hx_, hy_, dm, dx, dy, reg):
     S = (1 + reg) * np.eye(dx) - sig @ sig.T
-    B = hx_ - sig @ hy_
+    B = hx - sig @ hy
     obj = 0.5 / np.log(2) * npla.slogdet(
-        np.eye(dm) + hy_.T @ hy_ + B.T @ la.solve(S, B)
+        np.eye(dm) + hy.T @ hy + B.T @ la.solve(S, B)
     )[1]
     return obj
 
 
-def gradient_numpy(sig, hx_, hy_, dm, dx, dy, reg):
+def gradient(sig, hx, hy, dm, dx, dy, reg):
     S = (1 + reg) * np.eye(dx) - sig @ sig.T
-    B = hx_ - sig @ hy_
+    B = hx - sig @ hy
     S_inv_B = la.solve(S, B)
-    g_sig = S_inv_B @ la.solve(np.eye(dm) + hy_.T @ hy_ + B.T @ S_inv_B,
-                               S_inv_B.T @ sig - hy_.T)
+    g_sig = S_inv_B @ la.solve(np.eye(dm) + hy.T @ hy + B.T @ S_inv_B,
+                               S_inv_B.T @ sig - hy.T)
     return g_sig
 
 
@@ -77,25 +65,19 @@ def project(sig_temp):
     return sig_temp_proj, True
 
 
-def exact_bert_union_info_minimizer(hx_, hy_, plot=False):
-    dx, dm = hx_.shape
-    dy, dm_ = hy_.shape
+def exact_bert_union_info_minimizer(hx, hy, plot=False):
+    dx, dm = hx.shape
+    dy, dm_ = hy.shape
     if dm != dm_:
         raise ValueError('Incompatible shapes for Hx and Hy')
 
-    sig = torch.eye(dx, dy, requires_grad=True)
-
-    hx = torch.from_numpy(hx_.astype(np.float32))
-    hy = torch.from_numpy(hy_.astype(np.float32))
-
     # Initialize sig
-    with torch.no_grad():
-        # XXX: Choice of which to pinv is arbitrary - can we average instead?
-        # (based on the two equations: we can either write it out in terms of
-        # hx - sig @ hy or hy - sig.T @ hx)
-        sig_temp = hx_ @ la.pinv(hy_)
-        sig_temp_proj = project(sig_temp)[0]
-        sig[:, :] = torch.from_numpy(sig_temp_proj.astype(np.float32))
+    # XXX: Choice of which to pinv is arbitrary - can we average instead?
+    # (based on the two equations: we can either write it out in terms of
+    # hx - sig @ hy or hy - sig.T @ hx)
+    sig_temp = hx @ la.pinv(hy)
+    sig_temp_proj = project(sig_temp)[0]
+    sig = sig_temp_proj.copy()
 
     # Gradient descent
     eta_sig = 0.1       # Learning rate for sig
@@ -109,12 +91,12 @@ def exact_bert_union_info_minimizer(hx_, hy_, plot=False):
     beta2 = 0.999
     beta3 = 0.99
     eps = 1e-3
-    m_sig = torch.zeros((dx, dy))
-    v_sig = torch.zeros((dx, dy))
+    m_sig = np.zeros((dx, dy))
+    v_sig = np.zeros((dx, dy))
 
-    reg = 1e-7       # Regularization in the objective for matrix inverse
+    reg = 1e-5       # Regularization in the objective for matrix inverse
     noise_std = 0    # Standard deviation of noise to add to the gradient
-    stop_threshold = 1e-6  # Absolute difference in objective for stopping
+    stop_threshold = 1e-4  # Absolute difference in objective for stopping
     max_iterations = 10000
     patience = 20    # Num iters with small gradient before stopping (min=1)
     extra_iters = 0  # Num of extra iters after stop criterion is attained
@@ -124,97 +106,81 @@ def exact_bert_union_info_minimizer(hx_, hy_, plot=False):
     running_sig_pre_proj = [sig_temp,]
     running_sig_post_proj = [sig_temp_proj,]
     running_grad = []
-    running_grad_numpy = []
     running_eta = []
     i = 1
     extra = 0
     while True:
         # Evaluate the objective
         obj = objective(sig, hx, hy, dm, dx, dy, reg)
-        obj.backward()
 
-        with torch.no_grad():
-            if minima is None or obj.item() < min(running_obj):
-                minima = copy.deepcopy(sig)
+        if minima is None or obj.item() < min(running_obj):
+            minima = sig.copy()
 
-            if len(running_obj) >= patience:
-                if extra == 0:
-                    if (np.abs(np.array(running_obj[-patience:]) - obj.item()) < stop_threshold).all() or i >= max_iterations:
-                        if extra_iters == 0: break
-                        extra += 1
-                elif extra > extra_iters:
-                    break
-                else:
+        # Termination condition
+        if len(running_obj) >= patience:
+            if extra == 0:
+                if (np.abs(np.array(running_obj[-patience:]) - obj.item()) < stop_threshold).all() or i >= max_iterations:
+                    if extra_iters == 0: break
                     extra += 1
+            elif extra > extra_iters:
+                break
+            else:
+                extra += 1
 
-            running_obj.append(copy.deepcopy(obj.item()))
-            i += 1
+        running_obj.append(copy.deepcopy(obj))
+        i += 1
 
-            # Compute gradient
-            g_sig = sig.grad #+ torch.abs(sig.grad).mean() * noise_std * torch.randn(dx, dy)
+        g_sig = gradient(sig, hx, hy, dm, dx, dy, reg)
+        g_sig = np.minimum(g_sig, 1)
+        g_sig = np.maximum(g_sig, -1)
 
-            # Clip element-wise gradient values at +/-1
-            g_sig = torch.minimum(g_sig, torch.ones(g_sig.shape))
-            g_sig = torch.maximum(g_sig, -torch.ones(g_sig.shape))
+        bt_i = 0  # Backtracking iteration number
+        while True:
+            # Vanilla gradient descent
+            sig_plus = sig - eta_sig * g_sig
 
-            sig_ = sig.detach().numpy()
-            g_sig_numpy = gradient_numpy(sig_, hx_, hy_, dm, dx, dy, reg)
-            g_sig_numpy = np.minimum(g_sig_numpy, 1)
-            g_sig_numpy = np.maximum(g_sig_numpy, -1)
-            running_grad_numpy.append(g_sig_numpy.copy())
+            # Vanilla gradient descent update with exponential lr decay
+            #sig_plus = sig - beta3**i * eta_sig * g_sig
 
-            bt_i = 0  # Backtracking iteration number
-            while True:
-                # Vanilla gradient descent
-                #sig_plus = sig - eta_sig * g_sig
-                sig_plus_ = sig_ - eta_sig * g_sig_numpy
+            # Adam update
+            #m_sig = beta1 * m_sig + (1 - beta1) * g_sig
+            #v_sig = beta2 * v_sig + (1 - beta2) * g_sig**2
+            #sig_plus = sig - gamma * (m_sig / (1 - beta1**i)) / (torch.sqrt(v_sig / (1 - beta2**i)) + eps)
 
-                # Vanilla gradient descent update with exponential lr decay
-                #sig_plus = sig - beta3**i * eta_sig * g_sig
+            # Project sig back onto the PSD cone
+            sig_temp = sig_plus.copy()
+            sig_temp_proj, sig_changed = project(sig_temp)
 
-                # Adam update
-                #m_sig = beta1 * m_sig + (1 - beta1) * g_sig
-                #v_sig = beta2 * v_sig + (1 - beta2) * g_sig**2
-                #sig_plus = sig - gamma * (m_sig / (1 - beta1**i)) / (torch.sqrt(v_sig / (1 - beta2**i)) + eps)
+            if not bt_ls:  # Not using backtracking
+                break
 
-                # Project sig back onto the PSD cone
-                #sig_temp = sig_plus.detach().numpy()
-                sig_temp = sig_plus_.copy()
-                sig_temp_proj, sig_changed = project(sig_temp)
-                #sig_plus[:, :] = torch.from_numpy(sig_temp_proj.astype(np.float32))
+            # Backtracking line search
+            #if sig_changed:
+            #    # Projection took effect; we are at the boundary
+            #    # So don't backtrack
+            #    eta_sig *= beta3  # Shrink eta anyway
+            #    break
+            # Sigma didn't change: can use sig_plus to compute obj_plus
+            obj_plus = objective(sig_temp_proj, hx, hy, dm, dx, dy, reg)
+            if obj_plus < obj:
+                break
+            elif bt_i > max_bt_iters:
+                # XXX: This warning will get issued if we have already converged
+                warnings.warn('Backtracking line search failed')
+                break
+            else:
+                bt_i += 1
+                eta_sig *= beta_bt  # Change lr for vanilla GD
+                running_eta.append(eta_sig)
 
-                if not bt_ls:  # Not using backtracking
-                    break
-
-                # Backtracking line search
-                #if sig_changed:
-                #    # Projection took effect; we are at the boundary
-                #    # So don't backtrack
-                #    eta_sig *= beta3  # Shrink eta anyway
-                #    break
-                # Sigma didn't change: can use sig_plus to compute obj_plus
-                obj_plus = objective_numpy(sig_temp_proj, hx_, hy_, dm, dx, dy, reg)
-                #obj_plus = objective(sig_plus, hx, hy, dm, dx, dy, reg)
-                if obj_plus < obj:
-                    break
-                elif bt_i > max_bt_iters:
-                    # XXX: This warning will get issued if we have already converged
-                    warnings.warn('Backtracking line search failed')
-                    break
-                else:
-                    bt_i += 1
-                    eta_sig *= beta_bt  # Change lr for vanilla GD
-                    running_eta.append(eta_sig)
-
-            running_grad.append(g_sig.detach().numpy().copy())
-            running_sig_pre_proj.append(sig_temp.copy())
-            running_sig_post_proj.append(sig_temp_proj.copy())
-            sig[:, :] = torch.from_numpy(sig_temp_proj.astype(np.float32))
+        running_sig_pre_proj.append(sig_temp.copy())
+        running_sig_post_proj.append(sig_temp_proj.copy())
+        running_grad.append(g_sig.copy())
+        sig = sig_temp_proj.copy()
 
     running_sig_pre_proj = np.array(running_sig_pre_proj).squeeze()
     running_sig_post_proj = np.array(running_sig_post_proj).squeeze()
     running_grad = np.array(running_grad).squeeze()
-    running_grad_numpy = np.array(running_grad_numpy).squeeze()
 
     if plot:
         nrows = 2
@@ -231,7 +197,6 @@ def exact_bert_union_info_minimizer(hx_, hy_, plot=False):
             plt.plot(running_sig_pre_proj)
             plt.plot(running_sig_post_proj)
             plt.plot(running_grad)
-            plt.plot(running_grad_numpy)
             plt.title('Convergence of minimizer')
             plt.ylabel('$\Sigma_i$')
             plt.xlabel('Iteration')
@@ -256,7 +221,7 @@ def exact_bert_union_info_minimizer(hx_, hy_, plot=False):
                 if np.any(np.eye(dx) - sig @ sig.T <= 0):
                     objs.append(np.nan)
                     continue
-                obj = objective_numpy(sig, hx_, hy_, dm, dx, dy, reg)
+                obj = objective(sig, hx, hy, dm, dx, dy, reg)
                 objs.append(obj)
             objs = np.repeat(np.array(objs).reshape((1, -1)), len(running_obj), axis=0)
             plt.pcolormesh(t, x_, objs.T, cmap='jet')
@@ -274,7 +239,7 @@ def exact_bert_union_info_minimizer(hx_, hy_, plot=False):
                 if np.any(npla.eigvals(np.eye(dx) - sig @ sig.T) < 0):
                     objs.append(np.nan)
                     continue
-                obj = objective_numpy(sig, hx_, hy_, dm, dx, dy, reg)
+                obj = objective(sig, hx, hy, dm, dx, dy, reg)
                 objs.append(obj)
             objs = np.array(objs).reshape(sigs.shape[:2])
             plt.pcolormesh(x, y, objs[:-1, :-1], cmap='jet')
@@ -300,7 +265,7 @@ def exact_bert_union_info_minimizer(hx_, hy_, plot=False):
                         if np.any(npla.eigvals(np.eye(dx) - sig @ sig.T) < 0):
                             objs.append(np.nan)
                             continue
-                        obj = objective_numpy(sig, hx_, hy_, dm, dx, dy, reg)
+                        obj = objective(sig, hx, hy, dm, dx, dy, reg)
                         objs.append(obj)
                     plt.plot(x, objs, label=('$\Sigma_{%d%d}$' % (i, j)))
             plt.title('Objective around optima')
@@ -315,7 +280,7 @@ def exact_bert_union_info_minimizer(hx_, hy_, plot=False):
 
     sig = minima
 
-    return sig.detach().numpy()
+    return sig
 
 
 def exact_bert_pytorch(cov, dm, dx, dy, verbose=False, ret_t_sigt=False, plot=False):
