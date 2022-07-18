@@ -98,8 +98,10 @@ def exact_bert_union_info_minimizer(hx_, hy_, plot=False):
         sig[:, :] = torch.from_numpy(sig_temp_proj.astype(np.float32))
 
     # Gradient descent
-    eta_sig = 0.1       # Learning rate for sig
+    #eta_sig = 0.1       # Learning rate for sig
+    eta_sig = 1e-3 * np.ones((dx, dy))
     bt_ls = True        # Whether to use backtracking line search
+    beta = 0.9
     beta_bt = 0.9       # Shrinking rate for backtracking line search
     max_bt_iters = 150  # Maximum number of iters to try backtracking
 
@@ -120,6 +122,7 @@ def exact_bert_union_info_minimizer(hx_, hy_, plot=False):
     extra_iters = 0  # Num of extra iters after stop criterion is attained
 
     minima = None
+    g_sig_prev = None
     running_obj = []
     running_sig_pre_proj = [sig_temp,]
     running_sig_post_proj = [sig_temp_proj,]
@@ -151,62 +154,45 @@ def exact_bert_union_info_minimizer(hx_, hy_, plot=False):
             i += 1
 
             # Compute gradient
-            g_sig = sig.grad #+ torch.abs(sig.grad).mean() * noise_std * torch.randn(dx, dy)
+            #g_sig = sig.grad #+ torch.abs(sig.grad).mean() * noise_std * torch.randn(dx, dy)
 
             # Clip element-wise gradient values at +/-1
-            g_sig = torch.minimum(g_sig, torch.ones(g_sig.shape))
-            g_sig = torch.maximum(g_sig, -torch.ones(g_sig.shape))
+            #g_sig = torch.minimum(g_sig, torch.ones(g_sig.shape))
+            #g_sig = torch.maximum(g_sig, -torch.ones(g_sig.shape))
+            #g_sig = torch.sign(g_sig)
 
             sig_ = sig.detach().numpy()
             g_sig_numpy = gradient_numpy(sig_, hx_, hy_, dm, dx, dy, reg)
-            g_sig_numpy = np.minimum(g_sig_numpy, 1)
-            g_sig_numpy = np.maximum(g_sig_numpy, -1)
+            #g_sig_numpy = np.minimum(g_sig_numpy, 1)
+            #g_sig_numpy = np.maximum(g_sig_numpy, -1)
+            g_sig_numpy = np.sign(g_sig_numpy).astype(int)
             running_grad_numpy.append(g_sig_numpy.copy())
 
-            bt_i = 0  # Backtracking iteration number
-            while True:
-                # Vanilla gradient descent
-                #sig_plus = sig - eta_sig * g_sig
-                sig_plus_ = sig_ - eta_sig * g_sig_numpy
+            # Backtracking with Rprop would have to work by ensuring that
+            # gradients are moving in the right direction along all dimensions.
+            #
+            # This won't work well in conjunction with *projected* gradient
+            # descent, because the projection step may be orthogonal to the
+            # gradient step in one dimension. If so, that dimension can never
+            # be made to move in the right direction, meaning backtracking
+            # will fail before convergence.
 
-                # Vanilla gradient descent update with exponential lr decay
-                #sig_plus = sig - beta3**i * eta_sig * g_sig
+            # Vanilla gradient descent
+            sig_plus_ = sig_ - eta_sig * g_sig_numpy
 
-                # Adam update
-                #m_sig = beta1 * m_sig + (1 - beta1) * g_sig
-                #v_sig = beta2 * v_sig + (1 - beta2) * g_sig**2
-                #sig_plus = sig - gamma * (m_sig / (1 - beta1**i)) / (torch.sqrt(v_sig / (1 - beta2**i)) + eps)
+            # Project sig back onto the PSD cone
+            sig_temp = sig_plus_.copy()
+            sig_temp_proj, _ = project(sig_temp)
 
-                # Project sig back onto the PSD cone
-                #sig_temp = sig_plus.detach().numpy()
-                sig_temp = sig_plus_.copy()
-                sig_temp_proj, sig_changed = project(sig_temp)
-                #sig_plus[:, :] = torch.from_numpy(sig_temp_proj.astype(np.float32))
+            # Learning rate update
+            if g_sig_prev is not None:
+                sign_changed = - g_sig_numpy * g_sig_prev  # -1 if sign did not change, +1 if sign changed
+                eta_sig *= beta**sign_changed
 
-                if not bt_ls:  # Not using backtracking
-                    break
+            g_sig_prev = g_sig_numpy.copy()
 
-                # Backtracking line search
-                #if sig_changed:
-                #    # Projection took effect; we are at the boundary
-                #    # So don't backtrack
-                #    eta_sig *= beta3  # Shrink eta anyway
-                #    break
-                # Sigma didn't change: can use sig_plus to compute obj_plus
-                obj_plus = objective_numpy(sig_temp_proj, hx_, hy_, dm, dx, dy, reg)
-                #obj_plus = objective(sig_plus, hx, hy, dm, dx, dy, reg)
-                if obj_plus < obj:
-                    break
-                elif bt_i > max_bt_iters:
-                    # XXX: This warning will get issued if we have already converged
-                    warnings.warn('Backtracking line search failed')
-                    break
-                else:
-                    bt_i += 1
-                    eta_sig *= beta_bt  # Change lr for vanilla GD
-                    running_eta.append(eta_sig)
-
-            running_grad.append(g_sig.detach().numpy().copy())
+            running_eta.append(eta_sig)
+            running_grad.append(g_sig_numpy.copy())
             running_sig_pre_proj.append(sig_temp.copy())
             running_sig_post_proj.append(sig_temp_proj.copy())
             sig[:, :] = torch.from_numpy(sig_temp_proj.astype(np.float32))
@@ -308,8 +294,8 @@ def exact_bert_union_info_minimizer(hx_, hy_, plot=False):
             plt.ylabel('Objective')
             plt.legend()
 
-        plt.subplot(nrows, ncols, 4)
-        plt.semilogy(running_eta)
+        #plt.subplot(nrows, ncols, 4)
+        #plt.semilogy(running_eta)
 
         plt.show()
 
