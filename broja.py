@@ -83,10 +83,13 @@ def exact_bert_union_info_minimizer(hx_, hy_, plot=False, ret_obj=False):
     if dm != dm_:
         raise ValueError('Incompatible shapes for Hx and Hy')
 
-    sig = torch.eye(dx, dy, requires_grad=True)
+    #sig = torch.eye(dx, dy, requires_grad=True)
+    sig = np.eye(dx, dy)
 
-    hx = torch.from_numpy(hx_.astype(np.float32))
-    hy = torch.from_numpy(hy_.astype(np.float32))
+    #hx = torch.from_numpy(hx_.astype(np.float32))
+    #hy = torch.from_numpy(hy_.astype(np.float32))
+    hx = hx_.copy()
+    hy = hy_.copy()
 
     # Initialize sig
     with torch.no_grad():
@@ -95,24 +98,13 @@ def exact_bert_union_info_minimizer(hx_, hy_, plot=False, ret_obj=False):
         # hx - sig @ hy or hy - sig.T @ hx)
         sig_temp = hx_ @ la.pinv(hy_)
         sig_temp_proj = project(sig_temp)[0]
-        sig[:, :] = torch.from_numpy(sig_temp_proj.astype(np.float32))
+        #sig[:, :] = torch.from_numpy(sig_temp_proj.astype(np.float32))
+        sig[:, :] = sig_temp_proj
 
     # Gradient descent
     #eta_sig = 0.1       # Learning rate for sig
     eta_sig = 1e-3 * np.ones((dx, dy))
-    bt_ls = True        # Whether to use backtracking line search
     beta = 0.9
-    beta_bt = 0.9       # Shrinking rate for backtracking line search
-    max_bt_iters = 150  # Maximum number of iters to try backtracking
-
-    # Adam parameters
-    gamma = 1e-3
-    beta1 = 0.9
-    beta2 = 0.999
-    beta3 = 0.99
-    eps = 1e-3
-    m_sig = torch.zeros((dx, dy))
-    v_sig = torch.zeros((dx, dy))
 
     reg = 1e-7       # Regularization in the objective for matrix inverse
     noise_std = 0    # Standard deviation of noise to add to the gradient
@@ -133,8 +125,18 @@ def exact_bert_union_info_minimizer(hx_, hy_, plot=False, ret_obj=False):
     extra = 0
     while True:
         # Evaluate the objective
-        obj = objective(sig, hx, hy, dm, dx, dy, reg)
-        obj.backward()
+        #obj = objective(sig, hx, hy, dm, dx, dy, reg)
+        obj = objective_numpy(sig, hx, hy, dm, dx, dy, reg)
+        #obj.backward()
+
+        # Temp container to make .item work on floats
+        class ObjContainer:
+            def __init__(self, obj_):
+                self.obj = obj_
+            def item(self):
+                return self.obj
+
+        obj = ObjContainer(obj)
 
         with torch.no_grad():
             if minima is None or obj.item() < min(running_obj):
@@ -158,15 +160,8 @@ def exact_bert_union_info_minimizer(hx_, hy_, plot=False, ret_obj=False):
                 running_obj.append(copy.deepcopy(obj.item()))
             i += 1
 
-            # Compute gradient
-            #g_sig = sig.grad #+ torch.abs(sig.grad).mean() * noise_std * torch.randn(dx, dy)
-
-            # Clip element-wise gradient values at +/-1
-            #g_sig = torch.minimum(g_sig, torch.ones(g_sig.shape))
-            #g_sig = torch.maximum(g_sig, -torch.ones(g_sig.shape))
-            #g_sig = torch.sign(g_sig)
-
-            sig_ = sig.detach().numpy()
+            #sig_ = sig.detach().numpy()
+            sig_ = sig.copy()
             g_sig_numpy = gradient_numpy(sig_, hx_, hy_, dm, dx, dy, reg)
             #g_sig_numpy = np.minimum(g_sig_numpy, 1)
             #g_sig_numpy = np.maximum(g_sig_numpy, -1)
@@ -177,10 +172,10 @@ def exact_bert_union_info_minimizer(hx_, hy_, plot=False, ret_obj=False):
             # gradients are moving in the right direction along all dimensions.
             #
             # This won't work well in conjunction with *projected* gradient
-            # descent, because the projection step may be orthogonal to the
-            # gradient step in one dimension. If so, that dimension can never
-            # be made to move in the right direction, meaning backtracking
-            # will fail before convergence.
+            # descent, because the projection step may be parallel and opposite
+            # to the gradient step in one dimension. If so, that dimension can
+            # never be made to move in the right direction, meaning
+            # backtracking will fail before convergence.
 
             # Vanilla gradient descent
             sig_plus_ = sig_ - eta_sig * g_sig_numpy
@@ -200,7 +195,8 @@ def exact_bert_union_info_minimizer(hx_, hy_, plot=False, ret_obj=False):
             running_grad.append(g_sig_numpy.copy())
             running_sig_pre_proj.append(sig_temp.copy())
             running_sig_post_proj.append(sig_temp_proj.copy())
-            sig[:, :] = torch.from_numpy(sig_temp_proj.astype(np.float32))
+            #sig[:, :] = torch.from_numpy(sig_temp_proj.astype(np.float32))
+            sig[:, :] = sig_temp_proj
 
     running_sig_pre_proj = np.array(running_sig_pre_proj).squeeze()
     running_sig_post_proj = np.array(running_sig_post_proj).squeeze()
@@ -307,8 +303,10 @@ def exact_bert_union_info_minimizer(hx_, hy_, plot=False, ret_obj=False):
     sig, obj = minima
 
     if ret_obj:
-        return sig.detach().numpy(), obj
-    return sig.detach().numpy()
+        #return sig.detach().numpy(), obj
+        return sig, obj
+    #return sig.detach().numpy()
+    return sig
 
 
 def exact_bert_pytorch(cov, dm, dx, dy, verbose=False, ret_t_sigt=False, plot=False):
