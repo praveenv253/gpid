@@ -77,7 +77,7 @@ def project(sig_temp):
     return sig_temp_proj, True
 
 
-def exact_bert_union_info_minimizer(hx_, hy_, plot=False):
+def exact_bert_union_info_minimizer(hx_, hy_, plot=False, ret_obj=False):
     dx, dm = hx_.shape
     dy, dm_ = hy_.shape
     if dm != dm_:
@@ -138,11 +138,13 @@ def exact_bert_union_info_minimizer(hx_, hy_, plot=False):
 
         with torch.no_grad():
             if minima is None or obj.item() < min(running_obj):
-                minima = copy.deepcopy(sig)
+                minima = (copy.deepcopy(sig), obj.item())
 
             if len(running_obj) >= patience:
                 if extra == 0:
                     if (np.abs(np.array(running_obj[-patience:]) - obj.item()) < stop_threshold).all() or i >= max_iterations:
+                        if i >= max_iterations:
+                            warnings.warn('Exceeded maximum number of iterations. May not have converged.')
                         if extra_iters == 0: break
                         extra += 1
                 elif extra > extra_iters:
@@ -150,7 +152,10 @@ def exact_bert_union_info_minimizer(hx_, hy_, plot=False):
                 else:
                     extra += 1
 
-            running_obj.append(copy.deepcopy(obj.item()))
+            if np.isnan(obj.item()):
+                running_obj.append(np.inf)
+            else:
+                running_obj.append(copy.deepcopy(obj.item()))
             i += 1
 
             # Compute gradient
@@ -299,8 +304,10 @@ def exact_bert_union_info_minimizer(hx_, hy_, plot=False):
 
         plt.show()
 
-    sig = minima
+    sig, obj = minima
 
+    if ret_obj:
+        return sig.detach().numpy(), obj
     return sig.detach().numpy()
 
 
@@ -313,22 +320,26 @@ def exact_bert_pytorch(cov, dm, dx, dy, verbose=False, ret_t_sigt=False, plot=Fa
 
     imx = 0.5 * npla.slogdet(np.eye(dm) + hx.T @ hx)[1] / np.log(2)
     imy = 0.5 * npla.slogdet(np.eye(dm) + hy.T @ hy)[1] / np.log(2)
-    imxy = 0.5 * npla.slogdet(np.eye(dm) + hxy.T @ la.solve(sigxy, hxy))[1] / np.log(2)
+    imxy = 0.5 * npla.slogdet(np.eye(dm) + hxy.T @ la.solve(sigxy + 1e-7 * np.eye(*sigxy.shape), hxy))[1] / np.log(2)
 
-    sig = exact_bert_union_info_minimizer(hx, hy, plot=plot)
+    #sig = exact_bert_union_info_minimizer(hx, hy, plot=plot)
+    sig, obj = exact_bert_union_info_minimizer(hx, hy, plot=plot, ret_obj=True)
     covxy__m = np.block([[np.eye(dx), sig], [sig.T, np.eye(dy)]])
     #covxy = covxy__m + np.vstack((hx, hy)) @ np.vstack((hx, hy)).T
 
-    union_info = 0.5 / np.log(2) * npla.slogdet(
-        np.eye(dm) + hxy.T @ la.solve(covxy__m + 1e-5 * np.eye(*covxy__m.shape), hxy))[1]
+    #union_info = 0.5 / np.log(2) * npla.slogdet(
+    #    np.eye(dm) + hxy.T @ la.solve(covxy__m + 1e-7 * np.eye(*covxy__m.shape), hxy))[1]
+    #union_info = objective(torch.from_numpy(sig.astype(np.float32)), torch.from_numpy(hx.astype(np.float32)), torch.from_numpy(hy.astype(np.float32)), dm, dx, dy, reg=1e-7).item()
+    #union_info = obj
+    union_info = objective_numpy(sig, hx, hy, dm, dx, dy, reg=1e-7)
 
     uix = union_info - imy
     uiy = union_info - imx
     ri = imx + imy - union_info
     si = imxy - union_info
 
-    # Return None in place of deficiency values to keep return signature consistent
-    ret = (imx, imy, imxy, None, None, uix, uiy, ri, si)
+    # Return union_info and None in place of deficiency values to keep return signature consistent
+    ret = (imx, imy, imxy, union_info, obj, uix, uiy, ri, si)
     if ret_t_sigt:
         ret = (*ret, None, None, None, sig)
 
