@@ -11,20 +11,8 @@ import matplotlib.pyplot as plt
 import scipy.linalg as la
 import numpy.linalg as npla
 
-import torch
-import torch.linalg
-
 from .utils import whiten, lin_tf_params_from_cov, lin_tf_params_bert
 from .estimate import exp_mvar_kl
-
-
-def objective(sig, hx, hy, dm, dx, dy, reg):
-    S = (1 + reg) * torch.eye(dx) - sig @ sig.T
-    B = hx - sig @ hy
-    obj = 0.5 / np.log(2) * torch.logdet(
-        torch.eye(dm) + hy.T @ hy + B.T @ torch.linalg.solve(S, B)
-    )
-    return obj
 
 
 def objective_numpy(sig, hx_, hy_, dm, dx, dy, reg):
@@ -83,23 +71,18 @@ def exact_bert_union_info_minimizer(hx_, hy_, plot=False, ret_obj=False):
     if dm != dm_:
         raise ValueError('Incompatible shapes for Hx and Hy')
 
-    #sig = torch.eye(dx, dy, requires_grad=True)
     sig = np.eye(dx, dy)
 
-    #hx = torch.from_numpy(hx_.astype(np.float32))
-    #hy = torch.from_numpy(hy_.astype(np.float32))
     hx = hx_.copy()
     hy = hy_.copy()
 
     # Initialize sig
-    with torch.no_grad():
-        # XXX: Choice of which to pinv is arbitrary - can we average instead?
-        # (based on the two equations: we can either write it out in terms of
-        # hx - sig @ hy or hy - sig.T @ hx)
-        sig_temp = hx_ @ la.pinv(hy_)
-        sig_temp_proj = project(sig_temp)[0]
-        #sig[:, :] = torch.from_numpy(sig_temp_proj.astype(np.float32))
-        sig[:, :] = sig_temp_proj
+    # XXX: Choice of which to pinv is arbitrary - can we average instead?
+    # (based on the two equations: we can either write it out in terms of
+    # hx - sig @ hy or hy - sig.T @ hx)
+    sig_temp = hx_ @ la.pinv(hy_)
+    sig_temp_proj = project(sig_temp)[0]
+    sig[:, :] = sig_temp_proj
 
     # Gradient descent
     #eta_sig = 0.1       # Learning rate for sig
@@ -125,78 +108,64 @@ def exact_bert_union_info_minimizer(hx_, hy_, plot=False, ret_obj=False):
     extra = 0
     while True:
         # Evaluate the objective
-        #obj = objective(sig, hx, hy, dm, dx, dy, reg)
         obj = objective_numpy(sig, hx, hy, dm, dx, dy, reg)
-        #obj.backward()
 
-        # Temp container to make .item work on floats
-        class ObjContainer:
-            def __init__(self, obj_):
-                self.obj = obj_
-            def item(self):
-                return self.obj
+        if minima is None or obj < min(running_obj):
+            minima = (sig.copy(), obj)
 
-        obj = ObjContainer(obj)
-
-        with torch.no_grad():
-            if minima is None or obj.item() < min(running_obj):
-                minima = (copy.deepcopy(sig), obj.item())
-
-            if len(running_obj) >= patience:
-                if extra == 0:
-                    if (np.abs(np.array(running_obj[-patience:]) - obj.item()) < stop_threshold).all() or i >= max_iterations:
-                        if i >= max_iterations:
-                            warnings.warn('Exceeded maximum number of iterations. May not have converged.')
-                        if extra_iters == 0: break
-                        extra += 1
-                elif extra > extra_iters:
-                    break
-                else:
+        if len(running_obj) >= patience:
+            if extra == 0:
+                if (np.abs(np.array(running_obj[-patience:]) - obj) < stop_threshold).all() or i >= max_iterations:
+                    if i >= max_iterations:
+                        warnings.warn('Exceeded maximum number of iterations. May not have converged.')
+                    if extra_iters == 0: break
                     extra += 1
-
-            if np.isnan(obj.item()):
-                running_obj.append(np.inf)
+            elif extra > extra_iters:
+                break
             else:
-                running_obj.append(copy.deepcopy(obj.item()))
-            i += 1
+                extra += 1
 
-            #sig_ = sig.detach().numpy()
-            sig_ = sig.copy()
-            g_sig_numpy = gradient_numpy(sig_, hx_, hy_, dm, dx, dy, reg)
-            #g_sig_numpy = np.minimum(g_sig_numpy, 1)
-            #g_sig_numpy = np.maximum(g_sig_numpy, -1)
-            g_sig_numpy = np.sign(g_sig_numpy).astype(int)
-            running_grad_numpy.append(g_sig_numpy.copy())
+        if np.isnan(obj):
+            running_obj.append(np.inf)
+        else:
+            running_obj.append(obj)
+        i += 1
 
-            # Backtracking with Rprop would have to work by ensuring that
-            # gradients are moving in the right direction along all dimensions.
-            #
-            # This won't work well in conjunction with *projected* gradient
-            # descent, because the projection step may be parallel and opposite
-            # to the gradient step in one dimension. If so, that dimension can
-            # never be made to move in the right direction, meaning
-            # backtracking will fail before convergence.
+        sig_ = sig.copy()
+        g_sig_numpy = gradient_numpy(sig_, hx_, hy_, dm, dx, dy, reg)
+        #g_sig_numpy = np.minimum(g_sig_numpy, 1)
+        #g_sig_numpy = np.maximum(g_sig_numpy, -1)
+        g_sig_numpy = np.sign(g_sig_numpy).astype(int)
+        running_grad_numpy.append(g_sig_numpy.copy())
 
-            # Vanilla gradient descent
-            sig_plus_ = sig_ - eta_sig * g_sig_numpy
+        # Backtracking with Rprop would have to work by ensuring that
+        # gradients are moving in the right direction along all dimensions.
+        #
+        # This won't work well in conjunction with *projected* gradient
+        # descent, because the projection step may be parallel and opposite
+        # to the gradient step in one dimension. If so, that dimension can
+        # never be made to move in the right direction, meaning
+        # backtracking will fail before convergence.
 
-            # Project sig back onto the PSD cone
-            sig_temp = sig_plus_.copy()
-            sig_temp_proj, _ = project(sig_temp)
+        # Vanilla gradient descent
+        sig_plus_ = sig_ - eta_sig * g_sig_numpy
 
-            # Learning rate update
-            if g_sig_prev is not None:
-                sign_changed = - g_sig_numpy * g_sig_prev  # -1 if sign did not change, +1 if sign changed
-                eta_sig *= beta**sign_changed
+        # Project sig back onto the PSD cone
+        sig_temp = sig_plus_.copy()
+        sig_temp_proj, _ = project(sig_temp)
 
-            g_sig_prev = g_sig_numpy.copy()
+        # Learning rate update
+        if g_sig_prev is not None:
+            sign_changed = - g_sig_numpy * g_sig_prev  # -1 if sign did not change, +1 if sign changed
+            eta_sig *= beta**sign_changed
 
-            running_eta.append(eta_sig)
-            running_grad.append(g_sig_numpy.copy())
-            running_sig_pre_proj.append(sig_temp.copy())
-            running_sig_post_proj.append(sig_temp_proj.copy())
-            #sig[:, :] = torch.from_numpy(sig_temp_proj.astype(np.float32))
-            sig[:, :] = sig_temp_proj
+        g_sig_prev = g_sig_numpy.copy()
+
+        running_eta.append(eta_sig)
+        running_grad.append(g_sig_numpy.copy())
+        running_sig_pre_proj.append(sig_temp.copy())
+        running_sig_post_proj.append(sig_temp_proj.copy())
+        sig[:, :] = sig_temp_proj
 
     running_sig_pre_proj = np.array(running_sig_pre_proj).squeeze()
     running_sig_post_proj = np.array(running_sig_post_proj).squeeze()
@@ -303,9 +272,7 @@ def exact_bert_union_info_minimizer(hx_, hy_, plot=False, ret_obj=False):
     sig, obj = minima
 
     if ret_obj:
-        #return sig.detach().numpy(), obj
         return sig, obj
-    #return sig.detach().numpy()
     return sig
 
 
@@ -327,7 +294,6 @@ def exact_bert_pytorch(cov, dm, dx, dy, verbose=False, ret_t_sigt=False, plot=Fa
 
     #union_info = 0.5 / np.log(2) * npla.slogdet(
     #    np.eye(dm) + hxy.T @ la.solve(covxy__m + 1e-7 * np.eye(*covxy__m.shape), hxy))[1]
-    #union_info = objective(torch.from_numpy(sig.astype(np.float32)), torch.from_numpy(hx.astype(np.float32)), torch.from_numpy(hy.astype(np.float32)), dm, dx, dy, reg=1e-7).item()
     #union_info = obj
     union_info = objective_numpy(sig, hx, hy, dm, dx, dy, reg=1e-7)
 
