@@ -34,8 +34,8 @@ def whiten(cov, dm, dx, dy, ret_channel_params=False):
     # First standardize M
     sig_mxy = cov.copy()
     sig_m = cov[:dm, :dm]
-    sig_mxy[:, :dm] = solve(la.sqrtm(sig_m), sig_mxy[:, :dm].T).T
-    sig_mxy[:dm, :] = solve(la.sqrtm(sig_m), sig_mxy[:dm, :])
+    sig_mxy[:, :dm] = solve(la.sqrtm(sig_m).real, sig_mxy[:, :dm].T).T
+    sig_mxy[:dm, :] = solve(la.sqrtm(sig_m).real, sig_mxy[:dm, :])
     sig_m = sig_mxy[:dm, :dm]  # Redefine sig_m
 
     # Extract necessary parameters
@@ -49,12 +49,12 @@ def whiten(cov, dm, dx, dy, ret_channel_params=False):
     sig_y__m = sig_y - sig_y_m @ solve(sig_m, sig_y_m.T)
 
     # Whiten the X-channel
-    sig_mxy[:, dm:dm+dx] = solve(la.sqrtm(sig_x__m), sig_mxy[:, dm:dm+dx].T).T
-    sig_mxy[dm:dm+dx, :] = solve(la.sqrtm(sig_x__m), sig_mxy[dm:dm+dx, :])
+    sig_mxy[:, dm:dm+dx] = solve(la.sqrtm(sig_x__m).real, sig_mxy[:, dm:dm+dx].T).T
+    sig_mxy[dm:dm+dx, :] = solve(la.sqrtm(sig_x__m).real, sig_mxy[dm:dm+dx, :])
 
     # Whiten the Y-channel
-    sig_mxy[:, dm+dx:] = solve(la.sqrtm(sig_y__m), sig_mxy[:, dm+dx:].T).T
-    sig_mxy[dm+dx:, :] = solve(la.sqrtm(sig_y__m), sig_mxy[dm+dx:, :])
+    sig_mxy[:, dm+dx:] = solve(la.sqrtm(sig_y__m).real, sig_mxy[:, dm+dx:].T).T
+    sig_mxy[dm+dx:, :] = solve(la.sqrtm(sig_y__m).real, sig_mxy[dm+dx:, :])
 
     # Extract the final joint covariance of (X, Y) given M
     sig_xy = sig_mxy[dm:, dm:]

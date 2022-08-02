@@ -12,24 +12,23 @@ import scipy.linalg as la
 import numpy.linalg as npla
 
 from .utils import whiten, lin_tf_params_from_cov, lin_tf_params_bert
-from .estimate import exp_mvar_kl
 
 
-def objective_numpy(sig, hx_, hy_, dm, dx, dy, reg):
+def objective(sig, hx, hy, dm, dx, dy, reg):
     S = (1 + reg) * np.eye(dx) - sig @ sig.T
-    B = hx_ - sig @ hy_
+    B = hx - sig @ hy
     obj = 0.5 / np.log(2) * npla.slogdet(
-        np.eye(dm) + hy_.T @ hy_ + B.T @ la.solve(S, B)
+        np.eye(dm) + hy.T @ hy + B.T @ la.solve(S, B)
     )[1]
     return obj
 
 
-def gradient_numpy(sig, hx_, hy_, dm, dx, dy, reg):
+def gradient(sig, hx, hy, dm, dx, dy, reg):
     S = (1 + reg) * np.eye(dx) - sig @ sig.T
-    B = hx_ - sig @ hy_
+    B = hx - sig @ hy
     S_inv_B = la.solve(S, B)
-    g_sig = S_inv_B @ la.solve(np.eye(dm) + hy_.T @ hy_ + B.T @ S_inv_B,
-                               S_inv_B.T @ sig - hy_.T)
+    g_sig = S_inv_B @ la.solve(np.eye(dm) + hy.T @ hy + B.T @ S_inv_B,
+                               S_inv_B.T @ sig - hy.T)
     return g_sig
 
 
@@ -59,35 +58,30 @@ def project(sig_temp):
     covy__m = covxy__m[dx:, dx:]
 
     # Pull sig out of covxy and re-standardize
-    sig_temp_proj = la.solve(la.sqrtm(covx__m),
-                             la.solve(la.sqrtm(covy__m), covxy__m[:dx, dx:].T).T)
+    sig_temp_proj = la.solve(la.sqrtm(covx__m).real,
+                             la.solve(la.sqrtm(covy__m).real, covxy__m[:dx, dx:].T).T)
 
     return sig_temp_proj, True
 
 
-def exact_bert_union_info_minimizer(hx_, hy_, plot=False, ret_obj=False):
-    dx, dm = hx_.shape
-    dy, dm_ = hy_.shape
+def exact_bert_union_info_minimizer(hx, hy, plot=False, ret_obj=False):
+    dx, dm = hx.shape
+    dy, dm_ = hy.shape
     if dm != dm_:
         raise ValueError('Incompatible shapes for Hx and Hy')
-
-    sig = np.eye(dx, dy)
-
-    hx = hx_.copy()
-    hy = hy_.copy()
 
     # Initialize sig
     # XXX: Choice of which to pinv is arbitrary - can we average instead?
     # (based on the two equations: we can either write it out in terms of
     # hx - sig @ hy or hy - sig.T @ hx)
-    sig_temp = hx_ @ la.pinv(hy_)
+    sig_temp = hx @ la.pinv(hy)
     sig_temp_proj = project(sig_temp)[0]
-    sig[:, :] = sig_temp_proj
+    sig = sig_temp_proj.copy()
 
     # Gradient descent
-    #eta_sig = 0.1       # Learning rate for sig
     eta_sig = 1e-3 * np.ones((dx, dy))
-    beta = 0.9
+    beta = 0.9       # Factor to increase or decrease LR for Rprop
+    alpha = 0.999    # Slow decay of overall learning rate
 
     reg = 1e-7       # Regularization in the objective for matrix inverse
     noise_std = 0    # Standard deviation of noise to add to the gradient
@@ -102,13 +96,12 @@ def exact_bert_union_info_minimizer(hx_, hy_, plot=False, ret_obj=False):
     running_sig_pre_proj = [sig_temp,]
     running_sig_post_proj = [sig_temp_proj,]
     running_grad = []
-    running_grad_numpy = []
     running_eta = []
     i = 1
     extra = 0
     while True:
         # Evaluate the objective
-        obj = objective_numpy(sig, hx, hy, dm, dx, dy, reg)
+        obj = objective(sig, hx, hy, dm, dx, dy, reg)
 
         if minima is None or obj < min(running_obj):
             minima = (sig.copy(), obj)
@@ -131,12 +124,8 @@ def exact_bert_union_info_minimizer(hx_, hy_, plot=False, ret_obj=False):
             running_obj.append(obj)
         i += 1
 
-        sig_ = sig.copy()
-        g_sig_numpy = gradient_numpy(sig_, hx_, hy_, dm, dx, dy, reg)
-        #g_sig_numpy = np.minimum(g_sig_numpy, 1)
-        #g_sig_numpy = np.maximum(g_sig_numpy, -1)
-        g_sig_numpy = np.sign(g_sig_numpy).astype(int)
-        running_grad_numpy.append(g_sig_numpy.copy())
+        g_sig = gradient(sig, hx, hy, dm, dx, dy, reg)
+        g_sig = np.sign(g_sig).astype(int)
 
         # Backtracking with Rprop would have to work by ensuring that
         # gradients are moving in the right direction along all dimensions.
@@ -148,29 +137,27 @@ def exact_bert_union_info_minimizer(hx_, hy_, plot=False, ret_obj=False):
         # backtracking will fail before convergence.
 
         # Vanilla gradient descent
-        sig_plus_ = sig_ - eta_sig * g_sig_numpy
+        sig_plus = sig - alpha**i * eta_sig * g_sig
 
         # Project sig back onto the PSD cone
-        sig_temp = sig_plus_.copy()
-        sig_temp_proj, _ = project(sig_temp)
+        sig_proj, _ = project(sig_plus)
 
         # Learning rate update
         if g_sig_prev is not None:
-            sign_changed = - g_sig_numpy * g_sig_prev  # -1 if sign did not change, +1 if sign changed
+            sign_changed = - g_sig * g_sig_prev  # -1 if sign did not change, +1 if sign changed
             eta_sig *= beta**sign_changed
 
-        g_sig_prev = g_sig_numpy.copy()
+        g_sig_prev = g_sig
 
         running_eta.append(eta_sig)
-        running_grad.append(g_sig_numpy.copy())
-        running_sig_pre_proj.append(sig_temp.copy())
-        running_sig_post_proj.append(sig_temp_proj.copy())
-        sig[:, :] = sig_temp_proj
+        running_grad.append(g_sig)
+        running_sig_pre_proj.append(sig_plus)
+        running_sig_post_proj.append(sig_proj)
+        sig[:, :] = sig_proj
 
     running_sig_pre_proj = np.array(running_sig_pre_proj).squeeze()
     running_sig_post_proj = np.array(running_sig_post_proj).squeeze()
     running_grad = np.array(running_grad).squeeze()
-    running_grad_numpy = np.array(running_grad_numpy).squeeze()
 
     if plot:
         nrows = 2
@@ -187,7 +174,6 @@ def exact_bert_union_info_minimizer(hx_, hy_, plot=False, ret_obj=False):
             plt.plot(running_sig_pre_proj)
             plt.plot(running_sig_post_proj)
             plt.plot(running_grad)
-            plt.plot(running_grad_numpy)
             plt.title('Convergence of minimizer')
             plt.ylabel('$\Sigma_i$')
             plt.xlabel('Iteration')
@@ -212,7 +198,7 @@ def exact_bert_union_info_minimizer(hx_, hy_, plot=False, ret_obj=False):
                 if np.any(np.eye(dx) - sig @ sig.T <= 0):
                     objs.append(np.nan)
                     continue
-                obj = objective_numpy(sig, hx_, hy_, dm, dx, dy, reg)
+                obj = objective(sig, hx, hy, dm, dx, dy, reg)
                 objs.append(obj)
             objs = np.repeat(np.array(objs).reshape((1, -1)), len(running_obj), axis=0)
             plt.pcolormesh(t, x_, objs.T, cmap='jet')
@@ -230,7 +216,7 @@ def exact_bert_union_info_minimizer(hx_, hy_, plot=False, ret_obj=False):
                 if np.any(npla.eigvals(np.eye(dx) - sig @ sig.T) < 0):
                     objs.append(np.nan)
                     continue
-                obj = objective_numpy(sig, hx_, hy_, dm, dx, dy, reg)
+                obj = objective(sig, hx, hy, dm, dx, dy, reg)
                 objs.append(obj)
             objs = np.array(objs).reshape(sigs.shape[:2])
             plt.pcolormesh(x, y, objs[:-1, :-1], cmap='jet')
@@ -256,7 +242,7 @@ def exact_bert_union_info_minimizer(hx_, hy_, plot=False, ret_obj=False):
                         if np.any(npla.eigvals(np.eye(dx) - sig @ sig.T) < 0):
                             objs.append(np.nan)
                             continue
-                        obj = objective_numpy(sig, hx_, hy_, dm, dx, dy, reg)
+                        obj = objective(sig, hx, hy, dm, dx, dy, reg)
                         objs.append(obj)
                     plt.plot(x, objs, label=('$\Sigma_{%d%d}$' % (i, j)))
             plt.title('Objective around optima')
@@ -295,7 +281,7 @@ def exact_bert_pytorch(cov, dm, dx, dy, verbose=False, ret_t_sigt=False, plot=Fa
     #union_info = 0.5 / np.log(2) * npla.slogdet(
     #    np.eye(dm) + hxy.T @ la.solve(covxy__m + 1e-7 * np.eye(*covxy__m.shape), hxy))[1]
     #union_info = obj
-    union_info = objective_numpy(sig, hx, hy, dm, dx, dy, reg=1e-7)
+    union_info = objective(sig, hx, hy, dm, dx, dy, reg=1e-7)
 
     uix = union_info - imy
     uiy = union_info - imx
