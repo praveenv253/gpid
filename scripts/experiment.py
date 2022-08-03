@@ -1,5 +1,5 @@
-from generate import generate_system
-from estimate import approx_pid
+from gpid.generate import generate_system
+from gpid.estimate import approx_pid
 
 import random
 import numpy as np
@@ -205,7 +205,7 @@ def experiment(n=10):
 	df['nri'] = df.ri.values/df.imxy.values
 	df['nsi'] = df.si.values/df.imxy.values
 
-	df.to_csv('results.csv')
+	df.to_csv('../results/results.csv')
 
 
 def test_examples():
