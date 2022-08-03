@@ -3,7 +3,6 @@
 from __future__ import print_function, division
 
 import sys
-import copy
 import warnings
 
 import numpy as np
@@ -64,7 +63,7 @@ def project(sig_temp):
     return sig_temp_proj, True
 
 
-def exact_bert_union_info_minimizer(hx, hy, plot=False, ret_obj=False):
+def exact_tilde_union_info_minimizer(hx, hy, plot=False, ret_obj=False):
     dx, dm = hx.shape
     dy, dm_ = hy.shape
     if dm != dm_:
@@ -262,10 +261,7 @@ def exact_bert_union_info_minimizer(hx, hy, plot=False, ret_obj=False):
     return sig
 
 
-def exact_bert_pytorch(cov, dm, dx, dy, verbose=False, ret_t_sigt=False, plot=False):
-    # NOTE: Not using lin_tf_params_bert
-    #ret = lin_tf_params_from_cov(cov, dm, dx, dy)
-    #hx, hy, sigx_y, sigm, sigx, sigy, hxy, sigxy = ret
+def exact_gauss_tilde_pid(cov, dm, dx, dy, verbose=False, ret_t_sigt=False, plot=False):
     ret = whiten(cov, dm, dx, dy, ret_channel_params=True)
     sig_mxy, hx, hy, hxy, sigxy = ret
 
@@ -273,8 +269,8 @@ def exact_bert_pytorch(cov, dm, dx, dy, verbose=False, ret_t_sigt=False, plot=Fa
     imy = 0.5 * npla.slogdet(np.eye(dm) + hy.T @ hy)[1] / np.log(2)
     imxy = 0.5 * npla.slogdet(np.eye(dm) + hxy.T @ la.solve(sigxy + 1e-7 * np.eye(*sigxy.shape), hxy))[1] / np.log(2)
 
-    #sig = exact_bert_union_info_minimizer(hx, hy, plot=plot)
-    sig, obj = exact_bert_union_info_minimizer(hx, hy, plot=plot, ret_obj=True)
+    #sig = exact_tilde_union_info_minimizer(hx, hy, plot=plot)
+    sig, obj = exact_tilde_union_info_minimizer(hx, hy, plot=plot, ret_obj=True)
     covxy__m = np.block([[np.eye(dx), sig], [sig.T, np.eye(dy)]])
     #covxy = covxy__m + np.vstack((hx, hy)) @ np.vstack((hx, hy)).T
 
