@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 import scipy.linalg as la
 import numpy.linalg as npla
 
-from .utils import whiten, lin_tf_params_from_cov, lin_tf_params_bert
+from .utils import whiten
 
 
 def objective(sig, hx, hy, dm, dx, dy, reg):
