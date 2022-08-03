@@ -66,6 +66,39 @@ def whiten(cov, dm, dx, dy, ret_channel_params=False):
     return sig_mxy
 
 
+def recondition(x, max_cond=1e10, return_tf=False):
+    """
+    Utility function to remove correlated elements from a vector `x`, so that
+    its covariance matrix has a condition number no greater than `max_cond`.
+
+    The smallest eigenvalues are removed and the covariance matrix is reduced
+    in size.
+
+    Returns the transposed truncated eigenvector matrix (the effective
+    transformation that removes said eigenvalues) if `return_tf` is True.
+    """
+
+    # Rows of x represent variables, columns represent realizations
+    cov = np.cov(x)
+
+    w, v = la.eigh(cov)
+    w = w.real
+    v = v.real  # w and v should already be real, but this step ensures it
+
+    # Isolate indices causing large condition number
+    bad_indices = np.where(w < w[-1] / max_cond)[0]
+    start_index = bad_indices.max() + 1
+
+    wsub = w[start_index:]
+    vsub = v[:, start_index:]
+
+    x_new = vsub.T @ x
+
+    if return_tf:
+        return x_new, vsub.T
+    return x_new
+
+
 def lin_tf_params_from_cov(cov, dm, dx, dy):
     """
     Utility function to extract linear transform parameters from a covariance
@@ -271,5 +304,3 @@ def make_cov_m_equals_xy(covxy, dx, dy, epsilon=0.0):
                     [covm_y.T, covx_y.T, covy + epsilon * np.eye(dy)]])
 
     return cov
-
-
