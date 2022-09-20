@@ -2,7 +2,6 @@
 
 from __future__ import print_function, division
 
-import joblib
 import numpy as np
 import pandas as pd
 
@@ -32,10 +31,10 @@ if __name__ == '__main__':
         cols = [(col, '') for col in config_cols]
         vals = [dm, dx, dy, gain_x, gain_y, theta]
 
-        for pid_name, pid_defn in zip(pid_defn_names, pid_defns):
-            cov, *dims = generate_cov_from_config(d=(dm, dx, dy), gain=(gain_x, gain_y),
-                                                  theta=theta)
+        cov, *dims = generate_cov_from_config(d=(dm, dx, dy), gain=(gain_x, gain_y),
+                                              theta=theta)
 
+        for pid_name, pid_defn in zip(pid_defn_names, pid_defns):
             ret = pid_defn(cov, dm, dx, dy)
             imxy, uix, uiy, ri, si = ret[2], *ret[-4:]
 
@@ -69,10 +68,10 @@ if __name__ == '__main__':
         cols = [(col, '') for col in config_cols]
         vals = [dm, dx, dy, gain_x, gain_y, theta]
 
-        for pid_name, pid_defn in zip(pid_defn_names, pid_defns):
-            cov, *dims = generate_cov_from_config(d=(dm, dx, dy), gain=(gain_x, gain_y),
-                                                  theta=theta)
+        cov, *dims = generate_cov_from_config(d=(dm, dx, dy), gain=(gain_x, gain_y),
+                                              theta=theta)
 
+        for pid_name, pid_defn in zip(pid_defn_names, pid_defns):
             ret = pid_defn(cov, dm, dx, dy)
             imxy, uix, uiy, ri, si = ret[2], *ret[-4:]
 
@@ -80,19 +79,18 @@ if __name__ == '__main__':
             vals.extend([imxy, uix, uiy, ri, si])
 
         # Ground truth value: exists only if theta = 0 or theta = pi/2
+        mi = lambda snr: 0.5 * np.log2(1 + snr)
         if theta == 0:
             gt_exists = True
-            uix = max(0, 0.5 * np.log2(1 + gain_x**2) - 0.5 * np.log2(1 + 1))
-            uiy = max(0, 0.5 * np.log2(1 + gain_y**2) - 0.5 * np.log2(1 + 1))
-            ri = (min(0.5 * np.log2(1 + gain_x**2), 0.5 * np.log2(1 + 1))
-                  + min(0.5 * np.log2(1 + gain_y**2), 0.5 * np.log2(1 + 1)))
+            uix = max(0, mi(gain_x**2) - mi(1))
+            uiy = max(0, mi(gain_y**2) - mi(1))
+            ri = min(mi(gain_x**2), mi(1)) + min(mi(gain_y**2), mi(1))
             si = imxy - uix - uiy - ri  # NOTE: Taking imxy from for loop!
         elif np.isclose(theta, np.pi/2):
             gt_exists = True
-            uix = max(0, 0.5 * np.log2(1 + gain_x**2) - 0.5 * np.log2(1 + gain_y**2))
-            uiy = max(0, 0.5 * np.log2(1 + gain_y**2) - 0.5 * np.log2(1 + gain_x**2))
-            ri = (min(0.5 * np.log2(1 + gain_x**2), 0.5 * np.log2(1 + gain_y**2))
-                  + 0.5 * np.log2(1 + 1))
+            uix = max(0, mi(gain_x**2) - mi(gain_y**2))
+            uiy = max(0, mi(gain_y**2) - mi(gain_x**2))
+            ri = min(mi(gain_x**2), mi(gain_y**2)) + mi(1)
             si = imxy - uix - uiy - ri  # NOTE: Taking imxy from for loop!
         else:
             gt_exists = False

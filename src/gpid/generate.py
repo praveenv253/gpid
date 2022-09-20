@@ -108,9 +108,13 @@ def generate_cov_from_config(**kwargs):
             Table containing columns dm, dx, dy, gain_x, gain_y, and theta,
             corresponding to the first configuration
         id1: int
-            Row index of the first configuration to choose
+            Row index (loc) of the first configuration to choose
         id2: int
-            Row index of the second configuration to choose
+            Row index (loc) of the second configuration to choose
+        random_rotn: False (use as default) or None or int seed
+            Whether to use random rotations while combining covariance matrices
+            (if not False), and what random seed to use (any int). Set as None
+            to use random rotations without setting a seed.
     """
 
     if all(item in kwargs for item in ['d', 'gain', 'theta']):
@@ -141,7 +145,7 @@ def generate_cov_from_config(**kwargs):
         random_rotn = kwargs['random_rotn']
 
         if random_rotn is False:
-            seed = None
+            seed = None  # Doesn't matter what seed is: merge_covs won't use it
         else:
             seed = random_rotn
             random_rotn = True
@@ -157,7 +161,7 @@ def generate_cov_from_config(**kwargs):
                 gain_x, gain_y = pid_table.loc[index, ['gain_x', 'gain_y']]
                 cov, *d = generate_cov_from_config(d=(dm, dx, dy),
                                                    gain=(gain_x, gain_y),
-                                                   theta=pid_table.loc[index, 'theta'])
+                                                   theta=pid_table['theta'][index])
             elif pid_table.loc[index, config2_params].notna().all():
                 sub_id1, sub_id2, sub_rotn = pid_table.loc[index, config2_params]
                 cov, *d = generate_cov_from_config(pid_table=pid_table,
