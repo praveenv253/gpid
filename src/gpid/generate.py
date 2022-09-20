@@ -9,7 +9,172 @@ Description: Functions for generating a multivariate Gaussian System
 
 import numpy as np
 import scipy
-from scipy.stats import wishart
+from scipy.stats import wishart, ortho_group
+
+
+def rotn_mat_2d(theta):
+    return np.array([[np.cos(theta), -np.sin(theta)],
+                     [np.sin(theta), np.cos(theta)]])
+
+
+def random_rotation_mxy(cov, dm, dx, dy, seed=None):
+    """
+    Perform random rotations on the M, X and Y components of a covariance matrix.
+    Returns a copy.
+    """
+    cov = cov.copy()
+
+    rng = np.random.default_rng(seed)
+
+    R = ortho_group.rvs(dm, seed=rng)
+    cov[:dm, :] = R @ cov[:dm, :]
+    cov[:, :dm] = cov[:, :dm] @ R.T
+    R = ortho_group.rvs(dx, seed=rng)
+    cov[dm:dm+dx, :] = R @ cov[dm:dm+dx, :]
+    cov[:, dm:dm+dx] = cov[:, dm:dm+dx] @ R.T
+    R = ortho_group.rvs(dy, seed=rng)
+    cov[dm+dx:, :] = R @ cov[dm+dx:, :]
+    cov[:, dm+dx:] = cov[:, dm+dx:] @ R.T
+
+    return cov
+
+
+def move_cov_block_to_end(cov, i, j):
+    """
+    Moves the variables indexed by i:j to the end of the covariance matrix.
+    Assumes the covariance matrix is symmetric.
+    Negative indices will not work.
+    """
+    if i >= j:
+        raise ValueError('Index i must be less than index j')
+    cov_new = np.delete(cov, np.s_[i:j], axis=0)
+    cov_new = np.delete(cov_new, np.s_[i:j], axis=1)
+    diag_block = cov[i:j, i:j]
+    nondiag_block = np.delete(cov[i:j, :], np.s_[i:j], axis=1)
+    return np.block([[cov_new, nondiag_block.T], [nondiag_block, diag_block]])
+
+
+def merge_covs(cov1, cov2, dm1, dx1, dy1, dm2=None, dx2=None, dy2=None,
+               random_rotn=False, seed=None):
+    """
+    Merges two covariance matrices of given M, X and Y dimensions.
+    Performs a random rotation on M, X and Y after merging, if random_rotn is True.
+    """
+    if dm2 is None:
+        dm2 = dm1
+    if dx2 is None:
+        dx2 = dx1
+    if dy2 is None:
+        dy2 = dy1
+
+    dm = dm1 + dm2
+    dx = dx1 + dx2
+    dy = dy1 + dy2
+
+    zero_block = np.zeros((cov1.shape[0], cov2.shape[0]))
+    cov = np.block([[cov1, zero_block], [zero_block.T, cov2]])
+
+    # Move required blocks to end: order of ops is important!
+    cov = move_cov_block_to_end(cov, dm1, dm1 + dx1 + dy1)
+    # Diag now reads: M1, M2, X2, Y2, X1, Y1
+    cov = move_cov_block_to_end(cov, dm, dm + dx2)
+    # Diag now reads: M1, M2, Y2, X1, Y1, X2
+    cov = move_cov_block_to_end(cov, dm + dy2 + dx1, dm + dy2 + dx1 + dy1)
+    # Diag now reads: M1, M2, Y2, X1, X2, Y1
+    cov = move_cov_block_to_end(cov, dm, dm + dy2)
+    # Diag now reads: M1, M2, X1, X2, Y1, Y2
+
+    if random_rotn:
+        cov = random_rotation_mxy(cov, dm, dx, dy, seed=seed)
+
+    return cov, dm, dx, dy
+
+
+def generate_cov_from_config(**kwargs):
+    """
+    Generate a covariance matrix from a given "configuration".
+    The configuration can be one of two sets of keyword arguments. The first
+    set generates a new covariance matrix corresponding to the parameters:
+        d: tuple of (int, int, int)
+            Represents (dm, dx, dy). Only (2, 2, 2) currently supported.
+        gain: tuple of (float, float)
+            Represents (gain_x, gain_y), i.e., gain for X and Y respectively
+        theta: float
+            Counterclockwise rotation to be applied. Makes most sense to be in
+            the interval [0, np.pi].
+    The second set combines the covariance matrices from two previously
+    generated configurations.
+        pid_table: pd.DataFrame
+            Table containing columns dm, dx, dy, gain_x, gain_y, and theta,
+            corresponding to the first configuration
+        id1: int
+            Row index of the first configuration to choose
+        id2: int
+            Row index of the second configuration to choose
+    """
+
+    if all(item in kwargs for item in ['d', 'gain', 'theta']):
+        if kwargs['d'] != (2, 2, 2):
+            raise ValueError('Only d=(2, 2, 2) is supported')
+        dm, dx, dy = kwargs['d']
+        gain_x, gain_y = kwargs['gain']
+        theta = kwargs['theta']
+
+        sigm = np.eye(dm)
+        hx = np.array([[gain_x, 0], [0, 1]]) @ rotn_mat_2d(-theta)
+        hy = np.array([[1, 0], [0, gain_y]])
+        sigx_m = np.eye(dx)
+        sigy_m = np.eye(dy)
+        sigw = np.zeros((dx, dy))
+
+        # Covariance matrix construction for both unique or redundant
+        cov = np.block([[sigm, sigm @ hx.T, sigm @ hy.T],
+                        [hx @ sigm, hx @ sigm @ hx.T + sigx_m, hx @ sigm @ hy.T + sigw],
+                        [hy @ sigm, hy @ sigm @ hx.T + sigw.T, hy @ sigm @ hy.T + sigy_m]])
+
+        return cov, dm, dx, dy
+
+    elif all(item in kwargs for item in ['pid_table', 'id1', 'id2', 'random_rotn']):
+        pid_table = kwargs['pid_table']
+        id1 = kwargs['id1']
+        id2 = kwargs['id2']
+        random_rotn = kwargs['random_rotn']
+
+        if random_rotn is False:
+            seed = None
+        else:
+            seed = random_rotn
+            random_rotn = True
+
+        covs = []
+        ds = []
+        config1_params = ['dm', 'dx', 'dy', 'gain_x', 'gain_y', 'theta']
+        config2_params = ['id1', 'id2', 'random_rotn']
+
+        for index in [id1, id2]:
+            if pid_table.loc[index, config1_params].notna().all():
+                dm, dx, dy = pid_table.loc[index, ['dm', 'dx', 'dy']]
+                gain_x, gain_y = pid_table.loc[index, ['gain_x', 'gain_y']]
+                cov, *d = generate_cov_from_config(d=(dm, dx, dy),
+                                                   gain=(gain_x, gain_y),
+                                                   theta=pid_table.loc[index, 'theta'])
+            elif pid_table.loc[index, config2_params].notna().all():
+                sub_id1, sub_id2, sub_rotn = pid_table.loc[index, config2_params]
+                cov, *d = generate_cov_from_config(pid_table=pid_table,
+                                                   id1=sub_id1, id2=sub_id2,
+                                                   random_rotn=sub_rotn)
+            else:
+                raise ValueError('Index %d in pid_table does not have a valid '
+                                 'configuration' % index)
+            covs.append(cov)
+            ds.append(d)
+
+        # TODO: Test the way random_rotn and seed are being used here
+        return merge_covs(covs[0], covs[1], *ds[0], *ds[1], random_rotn, seed)
+
+    else:
+        raise ValueError('Unrecognized keyword combination %s' % list(kwargs.keys()))
+
 
 def generate_system(system='random',dm=5,dx=5,dy=5,dof=0,V=None):
 	"""
@@ -24,21 +189,21 @@ def generate_system(system='random',dm=5,dx=5,dy=5,dof=0,V=None):
 
 	dm : int
 		dimensionality of M vector
-	
+
 	dx : int
 		dimensionality of X vector
-	
+
 	dy : int
 		dimensionality of Y vector
 
 	dof : int
 		number of degrees of freedom for generating covariance matrix
-		from Wishart distribution. if n < dm+dx+dy, it will 
+		from Wishart distribution. if n < dm+dx+dy, it will
 		default to n = dm+dx+dy
 		***only applies when system=='random'
 
 	V : np.ndarray [dm+dx+dy,dm+dx+dy]
-		Wishart scale matrix. defaults to identity.		
+		Wishart scale matrix. defaults to identity.
 		***only applies when system=='random'
 
 	Returns
@@ -135,7 +300,7 @@ def generate_system(system='random',dm=5,dx=5,dy=5,dof=0,V=None):
 		# but X is noisier
 		sigx = 4*np.eye(dx)
 		sigy = 0.01*np.eye(dy)
-		
+
 	# would X is fully redundant
 	elif system == 'one is very unique':
 		dm = 10
@@ -150,7 +315,7 @@ def generate_system(system='random',dm=5,dx=5,dy=5,dof=0,V=None):
 		sigm = np.eye(dm)
 		sigx = 1*np.eye(dx)
 		sigy = 1*np.eye(dy)
-		
+
 	# expect some uniqueness and some redundancy
 	elif system == 'some of each':
 		dm = 3
@@ -164,7 +329,7 @@ def generate_system(system='random',dm=5,dx=5,dy=5,dof=0,V=None):
 		sigm = np.eye(dm)
 		sigx = np.eye(dx)
 		sigy = np.eye(dy)
-		
+
 	# the system considered by Barrett
 	elif system == 'univariate':
 		dm = 1
@@ -173,7 +338,7 @@ def generate_system(system='random',dm=5,dx=5,dy=5,dof=0,V=None):
 
 		hx = np.random.uniform(-1,1,size=(dx,dm))
 		hy = np.random.uniform(-1,1,size=(dx,dm))
-	   
+
 		sigm = np.eye(dm)
 		sigx = np.eye(dx) - hx.dot(sigm).dot(hx.T)
 		sigy = np.eye(dy) - hy.dot(sigm).dot(hy.T)
