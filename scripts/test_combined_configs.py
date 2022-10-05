@@ -37,7 +37,7 @@ if __name__ == '__main__':
         for j in indices:
             print(j, end=' ', flush=True)
 
-            randint = False # rng.integers(2**16)
+            randint = None # False # rng.integers(2**16)
             cov, *d = generate_cov_from_config(pid_table=pid_table, id1=i, id2=j,
                                                random_rotn=randint)
 
@@ -68,6 +68,6 @@ if __name__ == '__main__':
         print()
 
     print(pid_table)
-    assert np.allclose((pid_table['tilde'] - pid_table['gt']).dropna().to_numpy(), 0, atol=1e-5)
-
     pid_table.to_pickle('../results/pid_table_combos.pkl.gz')
+
+    assert np.allclose((pid_table['tilde'] - pid_table['gt']).dropna().to_numpy(), 0, atol=1e-5)

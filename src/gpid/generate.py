@@ -24,15 +24,25 @@ def random_rotation_mxy(cov, dm, dx, dy, seed=None):
     """
     cov = cov.copy()
 
-    rng = np.random.default_rng(seed)
+    #rng = np.random.default_rng(seed)
 
-    R = ortho_group.rvs(dm, seed=rng)
+    #R = ortho_group.rvs(dm, seed=rng)
+    #cov[:dm, :] = R @ cov[:dm, :]
+    #cov[:, :dm] = cov[:, :dm] @ R.T
+    #R = ortho_group.rvs(dx, seed=rng)
+    #cov[dm:dm+dx, :] = R @ cov[dm:dm+dx, :]
+    #cov[:, dm:dm+dx] = cov[:, dm:dm+dx] @ R.T
+    #R = ortho_group.rvs(dy, seed=rng)
+    #cov[dm+dx:, :] = R @ cov[dm+dx:, :]
+    #cov[:, dm+dx:] = cov[:, dm+dx:] @ R.T
+
+    R = ortho_group.rvs(dm)
     cov[:dm, :] = R @ cov[:dm, :]
     cov[:, :dm] = cov[:, :dm] @ R.T
-    R = ortho_group.rvs(dx, seed=rng)
+    R = ortho_group.rvs(dx)
     cov[dm:dm+dx, :] = R @ cov[dm:dm+dx, :]
     cov[:, dm:dm+dx] = cov[:, dm:dm+dx] @ R.T
-    R = ortho_group.rvs(dy, seed=rng)
+    R = ortho_group.rvs(dy)
     cov[dm+dx:, :] = R @ cov[dm+dx:, :]
     cov[:, dm+dx:] = cov[:, dm+dx:] @ R.T
 
