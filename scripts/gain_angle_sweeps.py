@@ -19,17 +19,17 @@ if __name__ == '__main__':
     pid_defn_names = ['tilde', 'delta', 'mmi']
     pid_defns = [exact_gauss_tilde_pid, approx_pid_from_cov, mmi_pid]
 
-    config_cols = ['dm', 'dx', 'dy', 'gain_x', 'gain_y', 'theta']
+    config_cols = ['desc', 'id', 'dm', 'dx', 'dy', 'gain_x', 'gain_y', 'theta']
     pid_cols = ['imxy', 'uix', 'uiy', 'ri', 'si']
 
     theta = 0
-    gain_y = 1
+    gain_y = np.sqrt(2)
     gains = np.linspace(0, 3, 10)
     for i, gain_x in enumerate(gains):
         print(i, end=' ', flush=True)
 
         cols = [(col, '') for col in config_cols]
-        vals = [dm, dx, dy, gain_x, gain_y, theta]
+        vals = ['gain', i, dm, dx, dy, gain_x, gain_y, theta]
 
         cov, *dims = generate_cov_from_config(d=(dm, dx, dy), gain=(gain_x, gain_y),
                                               theta=theta)
@@ -46,8 +46,15 @@ if __name__ == '__main__':
             gt_exists = True
             # NOTE: Takes all PID values from above, since MMI runs second in the loop
         else:
-            gt_exists = False
-            uix, uiy, ri, si = [np.nan,] * 4  # Reset values to nan
+            gt_exists = True
+            ret = mmi_pid(cov[np.ix_([0, 2, 4], [0, 2, 4])], 1, 1, 1)
+            pid_vals = np.r_[ret[2], ret[-4:]]
+            ret = mmi_pid(cov[np.ix_([1, 3, 5], [1, 3, 5])], 1, 1, 1)
+            pid_vals += np.r_[ret[2], ret[-4:]]
+            imxy, uix, uiy, ri, si = pid_vals
+        #else:
+        #    gt_exists = False
+        #    uix, uiy, ri, si = [np.nan,] * 4  # Reset values to nan
 
         pid_name = 'gt'
         cols.extend([(pid_name, col) for col in pid_cols])
@@ -66,7 +73,7 @@ if __name__ == '__main__':
         print(i, end=' ', flush=True)
 
         cols = [(col, '') for col in config_cols]
-        vals = [dm, dx, dy, gain_x, gain_y, theta]
+        vals = ['angle', i, dm, dx, dy, gain_x, gain_y, theta]
 
         cov, *dims = generate_cov_from_config(d=(dm, dx, dy), gain=(gain_x, gain_y),
                                               theta=theta)
@@ -107,7 +114,7 @@ if __name__ == '__main__':
 
     print()
 
+    pid_table.to_pickle('../results/gain_angle_exs.pkl.gz')
+
     print(pid_table)
     assert np.allclose((pid_table['tilde'] - pid_table['gt']).dropna().to_numpy(), 0, atol=1e-5)
-
-    pid_table.to_pickle('../results/pid_table.pkl.gz')
