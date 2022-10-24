@@ -68,7 +68,7 @@ if __name__ == '__main__':
     print()
 
     gain_x, gain_y = np.sqrt(2), np.sqrt(2)
-    thetas = np.r_[0, np.logspace(-5, np.log10(np.pi/2), 9)]
+    thetas = np.r_[0, np.logspace(-1, np.log10(np.pi/2), 9)]
     for i, theta in enumerate(thetas):
         print(i, end=' ', flush=True)
 
