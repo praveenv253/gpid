@@ -16,9 +16,9 @@ if __name__ == '__main__':
     pid_table = pd.merge(gt_pid_table, other_pid_table, on=config_cols)
     #pid_table = other_pid_table
 
-    pid_defns = ['tilde', 'delta', 'mmi', 'gt']#[:3]
-    linestyles = ['-', '--', ':', '']#[:3]
-    markers = ['', '', '', 'o']#[:3]
+    pid_defns = ['tilde', 'delta', 'mmi', 'gt']
+    linestyles = ['-', '--', ':', '']
+    markers = ['', '', '', 'o']
 
     pid_atoms = ['imxy', 'uix', 'uiy', 'ri', 'si']
     colors = ['k', 'C0', 'C1', 'C2', 'C3']
@@ -29,9 +29,11 @@ if __name__ == '__main__':
     ticksize = 12
 
 
+    fig, axs = plt.subplots(nrows=1, ncols=2, figsize=(13, 5))
+    axs = axs.flatten()
+
     # Un-normalized PID values
-    fig = plt.figure(figsize=(9, 6))
-    ax = plt.gca()
+    ax = axs[0]
     lines = {}  # Dictionary to hold all line handles for legend
     rows = pid_table[pid_table.desc == 'mult_poisson']
     for i, pid_defn in enumerate(pid_defns):
@@ -41,7 +43,8 @@ if __name__ == '__main__':
                            marker=markers[i])[0]
             lines[(colors[j], linestyles[i], markers[i])] = line
 
-    ax.set_title(r'PIDs for multivariate Poisson example', fontsize=titlesize)
+    fig.suptitle(r'PIDs for multivariate Poisson example', fontsize=titlesize)
+    #ax.set_title(r'PIDs for multivariate Poisson example', fontsize=titlesize)
     ax.set_xlabel(r'Weight from $M_1$ to $X$', fontsize=labelsize)
     ax.set_ylabel('Partial information (bits)', fontsize=labelsize)
     ax.set_xticks(rows['id'])
@@ -49,29 +52,9 @@ if __name__ == '__main__':
     ax.tick_params(axis='both', which='major', labelsize=ticksize)
     ax.grid(True)
 
-    # Legend
-    handles = [lines[(c, '-', '')] for c in colors]
-    texts = ['$I(M;(X,Y))$', '$UI_X$', '$UI_Y$', '$RI$', '$SI$']
-    color_legend = ax.legend(handles, texts, loc='center left', frameon=False,
-                             bbox_to_anchor=(1, 0.7), fontsize=legendsize,
-                             title='PID component', title_fontsize=labelsize)
-    # https://matplotlib.org/stable/tutorials/intermediate/legend_guide.html#multiple-legends-on-the-same-axes
-    ax.add_artist(color_legend)
-
-    handles = [lines[('k', ls, m)] for (ls, m) in zip(linestyles, markers)]
-    texts = ['$\sim$-PID', '$\delta$-PID', 'MMI-PID', 'Ground truth']#[:3]
-    defn_legend = ax.legend(handles, texts, loc='center left', frameon=False,
-                            bbox_to_anchor=(1, 0.2), fontsize=legendsize,
-                            title='PID definition', title_fontsize=labelsize)
-
-    plt.tight_layout()
-    plt.savefig('../figures/mult-poisson-ex.pdf')
-    #plt.show()
-
 
     # Normalized PID values
-    fig = plt.figure(figsize=(9, 6))
-    ax = plt.gca()
+    ax = axs[1]
     lines = {}  # Dictionary to hold all line handles for legend
     rows = pid_table.copy()
 
@@ -90,7 +73,7 @@ if __name__ == '__main__':
                 line.remove()
 
     ax.set_ylim(-0.03, 0.63)
-    ax.set_title(r'PIDs for multivariate Poisson example', fontsize=titlesize)
+    #ax.set_title(r'PIDs for multivariate Poisson example', fontsize=titlesize)
     ax.set_xlabel(r'Weight from $M_1$ to $X$', fontsize=labelsize)
     ax.set_ylabel('Normalized partial information', fontsize=labelsize)
     ax.set_xticks(rows['id'])
@@ -99,8 +82,10 @@ if __name__ == '__main__':
     ax.grid(True)
 
     # Legend
-    handles = [lines[(c, '-', '')] for c in colors[1:]]
-    texts = ['$I(M;(X,Y))$', '$UI_X$', '$UI_Y$', '$RI$', '$SI$'][1:]
+    handles = [lines[(c, '-', '')] for c in colors]
+    texts = ['$I(M;(X,Y))$',
+             r'$UI_X$ (l) / $\overline{UI}_X$ (r)', r'$UI_Y$ (l) / $\overline{UI}_X$ (r)',
+             r'$RI$ (l) / $\overline{RI}$ (r)', r'$SI$ (l) / $\overline{SI}$ (r)']
     color_legend = ax.legend(handles, texts, loc='center left', frameon=False,
                              bbox_to_anchor=(1, 0.7), fontsize=legendsize,
                              title='PID component', title_fontsize=labelsize)
@@ -108,11 +93,31 @@ if __name__ == '__main__':
     ax.add_artist(color_legend)
 
     handles = [lines[('k', ls, m)] for (ls, m) in zip(linestyles, markers)]
-    texts = ['$\sim$-PID', '$\delta$-PID', 'MMI-PID', 'Ground truth']#[:3]
+    texts = ['$\sim$-PID', '$\delta$-PID', 'MMI-PID', 'Ground truth']
     defn_legend = ax.legend(handles, texts, loc='center left', frameon=False,
                             bbox_to_anchor=(1, 0.2), fontsize=legendsize,
                             title='PID definition', title_fontsize=labelsize)
 
-    plt.tight_layout()
-    plt.savefig('../figures/mult-poisson-ex-norm.pdf')
+    #plt.tight_layout()
+    plt.subplots_adjust(left=0.07, right=0.8, bottom=0.12, wspace=0.25)
+    plt.savefig('../figures/mult-poisson-ex.pdf')
+    #plt.show()
+
+    ## Legend (for normalized plot alone)
+    #handles = [lines[(c, '-', '')] for c in colors[1:]]
+    #texts = ['$I(M;(X,Y))$', '$UI_X$', '$UI_Y$', '$RI$', '$SI$'][1:]
+    #color_legend = ax.legend(handles, texts, loc='center left', frameon=False,
+    #                         bbox_to_anchor=(1, 0.7), fontsize=legendsize,
+    #                         title='PID component', title_fontsize=labelsize)
+    ## https://matplotlib.org/stable/tutorials/intermediate/legend_guide.html#multiple-legends-on-the-same-axes
+    #ax.add_artist(color_legend)
+
+    #handles = [lines[('k', ls, m)] for (ls, m) in zip(linestyles, markers)]
+    #texts = ['$\sim$-PID', '$\delta$-PID', 'MMI-PID', 'Ground truth']#[:3]
+    #defn_legend = ax.legend(handles, texts, loc='center left', frameon=False,
+    #                        bbox_to_anchor=(1, 0.2), fontsize=legendsize,
+    #                        title='PID definition', title_fontsize=labelsize)
+
+    #plt.tight_layout()
+    #plt.savefig('../figures/mult-poisson-ex-norm.pdf')
     #plt.show()

@@ -18,7 +18,7 @@ if __name__ == '__main__':
     pid_defn_names = ['tilde', 'delta', 'mmi']
     pid_defns = [exact_gauss_tilde_pid, approx_pid_from_cov, mmi_pid]
 
-    config_cols = ['desc', 'index', 'dm', 'dx', 'dy', 'sigma_y__x', 'rho']
+    config_cols = ['desc', 'id', 'dm', 'dx', 'dy', 'sigma_y__x', 'rho']
     pid_cols = ['imxy', 'uix', 'uiy', 'ri', 'si']
 
     # -------------------------------------------------------------------------

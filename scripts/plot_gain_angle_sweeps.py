@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 from matplotlib.ticker import FormatStrFormatter
 import seaborn as sns
 
+
 if __name__ == '__main__':
     pid_table = pd.read_pickle('../results/gain_angle_exs.pkl.gz')
 
@@ -37,7 +38,7 @@ if __name__ == '__main__':
 
     ax.set_title(r'Increasing Gain in $X_1$', fontsize=titlesize)
     ax.set_xlabel(r'Gain in $X_1$', fontsize=labelsize)
-    ax.set_ylabel(ax.get_ylabel(), fontsize=labelsize)
+    ax.set_ylabel('Partial information (bits)', fontsize=labelsize)
     ax.set_xticks(gain_rows['id'])
     ax.set_xticklabels(['%.2f' % val for val in gain_rows.gain_x],
                        rotation=45, ha='right')
@@ -80,8 +81,8 @@ if __name__ == '__main__':
                             title='PID definition', title_fontsize=labelsize)
 
     plt.tight_layout()
-    #plt.savefig('../figures/gain-angle-sweeps.pdf')
-    plt.show()
+    plt.savefig('../figures/gain-angle-sweeps.pdf')
+    #plt.show()
 
 
     #cols = ['desc', 'id', 'tilde', 'delta', 'mmi', 'gt']
