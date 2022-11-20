@@ -261,13 +261,51 @@ def exact_tilde_union_info_minimizer(hx, hy, plot=False, ret_obj=False):
     return sig
 
 
-def exact_gauss_tilde_pid(cov, dm, dx, dy, verbose=False, ret_t_sigt=False, plot=False):
+def bias(d, n):
+    return sum(np.log(1 - k / n) for k in range(1, d+1)) / np.log(2) / 2
+
+
+def compute_bias(du, dv, n):
+    """
+    Compute the bias in the mutual information estimate based on the work of
+    Cai et al. (J. Mult. Anal., 2015).
+
+    This value needs to be subtracted from the mutual information estimate to
+    recover the unbiased mutual information.
+    """
+    # Bias of differential entropy estimate
+    return bias(du, n) + bias(dv, n) - bias(du + dv, n)
+
+
+def debias(imxy, bias_):
+    """Remove bias while ensuring non-negativity."""
+
+    return np.maximum(imxy - bias_, 0)
+
+
+def exact_gauss_tilde_pid(cov, dm, dx, dy, verbose=False, ret_t_sigt=False,
+                          plot=False, unbiased=False, sample_size=None):
+
+    # XXX: Debiasing has not been thoroughly tested.
+    # Right now, we assume that the bias in the union information is the same
+    # as the bias in I(M ; (X, Y)).
+    # Furthermore, we do not ensure that PID quantities remain positive after
+    # removing bias.
+
+    if unbiased == True and sample_size is None:
+        raise ValueError('Must supply sample_size when requesting unbiased estimates')
+
     ret = whiten(cov, dm, dx, dy, ret_channel_params=True)
     sig_mxy, hx, hy, hxy, sigxy = ret
 
     imx = 0.5 * npla.slogdet(np.eye(dm) + hx.T @ hx)[1] / np.log(2)
     imy = 0.5 * npla.slogdet(np.eye(dm) + hy.T @ hy)[1] / np.log(2)
     imxy = 0.5 * npla.slogdet(np.eye(dm) + hxy.T @ la.solve(sigxy + 1e-7 * np.eye(*sigxy.shape), hxy))[1] / np.log(2)
+
+    if unbiased:
+        imx = debias(imx, compute_bias(dm, dx, sample_size))
+        imy = debias(imy, compute_bias(dm, dy, sample_size))
+        imxy = debias(imxy, compute_bias(dm, dx + dy, sample_size))
 
     #sig = exact_tilde_union_info_minimizer(hx, hy, plot=plot)
     sig, obj = exact_tilde_union_info_minimizer(hx, hy, plot=plot, ret_obj=True)
@@ -278,6 +316,13 @@ def exact_gauss_tilde_pid(cov, dm, dx, dy, verbose=False, ret_t_sigt=False, plot
     #    np.eye(dm) + hxy.T @ la.solve(covxy__m + 1e-7 * np.eye(*covxy__m.shape), hxy))[1]
     #union_info = obj
     union_info = objective(sig, hx, hy, dm, dx, dy, reg=1e-7)
+
+    if unbiased:
+        # XXX: Bias in union info appears to be approximately half the bias in the mutual info
+        union_info = debias(union_info, 0.5 * compute_bias(dm, dx + dy, sample_size))
+        #union_info = debias(union_info,
+        #                    bias(dm, sample_size) + bias(dx, sample_size)
+        #                    + bias(dy, sample_size) - bias(dm + dx + dy, sample_size))
 
     uix = union_info - imy
     uiy = union_info - imx

@@ -8,6 +8,9 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
+import numpy.linalg as la
+from sklearn.model_selection import KFold
+
 from gpid.tilde_pid import exact_gauss_tilde_pid
 
 
@@ -78,14 +81,55 @@ def gauss_weighted_adj(A):
     return A * rng.normal(0, 1, size=A.shape)
 
 
+#def cross_validated_gauss_mi(z, dm, dx, dy):
+#    # z is of shape (dm + dx + dy, sample_size)
+#    sample_size = z.shape[1]
+#    cv = KFold(n_splits=3)
+
+#    cv_mis = []
+#    for train, test in cv.split(z.T):
+#        m_train, xy_train = z[:dm, train], z[dm:, train]
+#        m_test, xy_test = z[:dm, test], z[dm:, test]
+
+#        # Cross-covariance between (X, Y) and M
+#        sigma_xy_m = ((xy_train - xy_train.mean(axis=1, keepdims=True))
+#                      @ (m_train - m_train.mean(axis=1, keepdims=True)).T)
+#        sigma_xy_m /= len(train - 1)
+
+#        # Auto-covariance of M
+#        sigma_m = ((m_train - m_train.mean(axis=1, keepdims=True))
+#                   @ (m_train - m_train.mean(axis=1, keepdims=True)).T)
+#        sigma_m /= len(train - 1)
+
+#        # Auto-covariance of (X, Y) on test data
+#        sigma_xy = ((xy_test - xy_test.mean(axis=1, keepdims=True))
+#                    @ (xy_test - xy_test.mean(axis=1, keepdims=True)).T)
+#        sigma_xy /= len(test - 1)
+
+#        # Estimate (X, Y) from M and compute the residual
+#        xy__m_test = sigma_xy_m @ la.solve(sigma_m, m_test)
+#        residual = xy_test - xy__m_test
+
+#        # Compute the auto-covariance of the residual
+#        sigma_xy__m = ((residual - residual.mean(axis=1, keepdims=True))
+#                       @ (residual - residual.mean(axis=1, keepdims=True)).T)
+#        sigma_xy__m /= len(test - 1)
+
+#        # The MI is the difference of logdet of the covariances
+#        cv_mi = 0.5 * (la.slogdet(sigma_xy)[1] - la.slogdet(sigma_xy__m)[1]) / np.log(2)
+#        cv_mis.append(cv_mi)
+
+#    return max(0.0, np.mean(cv_mis))
+
+
 if __name__ == '__main__':
     # Make warnings raise an error: used in the try-except block, when we get
     # a LinAlgWarning because of poorly conditioned matrices (happens when
     # sample size is too low for the given dimensionality).
     warnings.filterwarnings('error')
 
-    M_vals = [10, 20, 50]
-    #M_vals = [10, 20]
+    #M_vals = [10, 20, 50]
+    M_vals = [10, 20]
     modes = ['both_unique', 'fully_redundant', 'zero_synergy']
 
     pid_table = pd.DataFrame()
@@ -96,9 +140,6 @@ if __name__ == '__main__':
     p = 0.1
     q = 0.1
     r = 0
-
-    import pdb
-    pdb.set_trace()
 
     for M in M_vals:
         print('M = %d' % M)
@@ -159,17 +200,18 @@ if __name__ == '__main__':
 
             # Compute PID on samples of different sample sizes, each T times
             rng = np.random.default_rng()
-            T = 100  # Number of trials
-            sample_sizes = np.r_[50, 100, 200, 500, 1000]
-            #sample_sizes = np.r_[50, 100]
+            T = 10  # Number of trials
+            sample_sizes = np.r_[100, 200, 300, 600, 1000]
             for sample_size in sample_sizes:
                 print('%d' % sample_size, end=' ', flush=True)
                 for i in range(T):
                     # Sample from the covariance matrix
+                    z = rng.multivariate_normal(np.zeros(cov.shape[0]), cov,
+                                                size=sample_size)
+                    cov_hat = np.cov(z.T)
+
+                    # Compute biased PID estimates
                     try:
-                        z = rng.multivariate_normal(np.zeros(cov.shape[0]), cov,
-                                                    size=sample_size)
-                        cov_hat = np.cov(z.T)
                         ret = exact_gauss_tilde_pid(cov_hat, dm, dx, dy)
                         imxy, uix, uiy, ri, si = ret[2], *ret[-4:]
                     except:  # Mainly to catch LinAlgWarning's
@@ -181,6 +223,28 @@ if __name__ == '__main__':
                     cols.extend([('tilde', col) for col in pid_cols])
                     vals.extend([imxy, uix, uiy, ri, si])
 
+                    # Compute biased PID estimates
+                    try:
+                        ret = exact_gauss_tilde_pid(cov_hat, dm, dx, dy, unbiased=True,
+                                                    sample_size=sample_size)
+                        imxy, uix, uiy, ri, si = ret[2], *ret[-4:]
+                    except:  # Mainly to catch LinAlgWarning's
+                        imxy, uix, uiy, ri, si = [np.nan,] * 5
+
+                    cols.extend([('unbiased_tilde', col) for col in pid_cols])
+                    vals.extend([imxy, uix, uiy, ri, si])
+
+                    ## Compute cross-validated mutual information estimate
+                    #cv_mi = cross_validated_gauss_mi(z.T, dm, dx, dy)
+                    #cols.append(('cv_mi', ''))
+                    #vals.append(cv_mi)
+
+                    ## Also include imxy as computed by using a different estimator
+                    #unbiased_imxy = compute_unbiased_imxy(cov_hat, dm, dx, dy,
+                    #                                      sample_size)
+                    #cols.append(('unbiased_imxy', ''))
+                    #vals.append(unbiased_imxy)
+
                     row = pd.DataFrame({col: [val] for col, val in zip(cols, vals)})
                     pid_table = pd.concat((pid_table, row), ignore_index=True)
 
@@ -188,5 +252,7 @@ if __name__ == '__main__':
 
         print()
 
-    pid_table.to_pickle('../results/sample_convergence.pkl.gz')
+    #pid_table.to_pickle('../results/sample_convergence.pkl.gz')
+    #pid_table.to_pickle('../results/sample_convergence_cv_mi.pkl.gz')
+    pid_table.to_pickle('../results/sample_convergence_unbiased.pkl.gz')
     print(pid_table)
