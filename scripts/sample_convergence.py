@@ -280,5 +280,5 @@ if __name__ == '__main__':
 
     #pid_table.to_pickle('../results/sample_convergence.pkl.gz')
     #pid_table.to_pickle('../results/sample_convergence_cv_mi.pkl.gz')
-    pid_table.to_pickle('../results/sample_convergence_unbiased.pkl.gz')
+    pid_table.to_pickle('../results/sample_convergence_unbiased_v2.pkl.gz')
     print(pid_table)

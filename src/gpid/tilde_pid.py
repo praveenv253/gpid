@@ -303,11 +303,13 @@ def exact_gauss_tilde_pid(cov, dm, dx, dy, verbose=False, ret_t_sigt=False,
     imxy = 0.5 * npla.slogdet(np.eye(dm) + hxy.T @ la.solve(sigxy + 1e-7 * np.eye(*sigxy.shape), hxy))[1] / np.log(2)
 
     if unbiased:
-        #imx = debias(imx, compute_bias(dm, dx, sample_size))
-        #imy = debias(imy, compute_bias(dm, dy, sample_size))
+        imx = debias(imx, compute_bias(dm, dx, sample_size))
+        imy = debias(imy, compute_bias(dm, dy, sample_size))
         imxy_debiased = debias(imxy, compute_bias(dm, dx + dy, sample_size))
     else:
         imxy_debiased = imxy
+
+    debias_factor = imxy_debiased / imxy
 
     #sig = exact_tilde_union_info_minimizer(hx, hy, plot=plot)
     sig, obj = exact_tilde_union_info_minimizer(hx, hy, plot=plot, ret_obj=True)
@@ -320,18 +322,20 @@ def exact_gauss_tilde_pid(cov, dm, dx, dy, verbose=False, ret_t_sigt=False,
     union_info = objective(sig, hx, hy, dm, dx, dy, reg=1e-7)
 
     if unbiased:
-        # XXX: Bias in union info appears to be approximately half the bias in the mutual info
-        #union_info = debias(union_info, bias(dm, sample_size))
-        #union_info = debias(union_info,
-        #                    bias(dm, sample_size) + bias(dx, sample_size)
-        #                    + bias(dy, sample_size) - bias(dm + dx + dy, sample_size))
-        pass
+        union_info *= debias_factor
+        union_info = max(union_info, imx, imy)
+        # Union info is lower bounded by max{I(M; X), I(M; Y)}
+        # This ensures positivity of the UI terms
 
-    debias_factor = imxy_debiased / imxy
-    uix = (union_info - imy) * debias_factor
-    uiy = (union_info - imx) * debias_factor
-    ri = (imx + imy - union_info) * debias_factor
-    si = (imxy - union_info) * debias_factor
+    uix = union_info - imy
+    uiy = union_info - imx
+    ri = imx + imy - union_info
+    si = imxy_debiased - union_info
+
+    #uix = (union_info - imy) * debias_factor
+    #uiy = (union_info - imx) * debias_factor
+    #ri = (imx + imy - union_info) * debias_factor
+    #si = (imxy - union_info) * debias_factor
 
     # Return union_info and None in place of deficiency values to keep return signature consistent
     ret = (imx, imy, imxy_debiased, union_info, obj, uix, uiy, ri, si)

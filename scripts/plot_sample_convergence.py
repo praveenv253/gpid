@@ -10,7 +10,7 @@ import seaborn as sns
 
 
 if __name__ == '__main__':
-    pid_table = pd.read_pickle('../results/sample_convergence_unbiased.pkl.gz')
+    pid_table = pd.read_pickle('../results/sample_convergence_unbiased_v2.pkl.gz')
 
     #pid_table.loc[(pid_table['M'] == 20)
     #              & (pid_table['sample_size'] == 50), 'tilde'] = np.nan
@@ -49,18 +49,18 @@ if __name__ == '__main__':
     pid_df['pi_comp_biased'] = pid_df[cols].agg(tuple, axis=1)
     pid_df = pid_df.drop(columns=cols)
 
-    sns.set_context('notebook')
-    for gid, gdf in pid_df.groupby('mode'):
-        axs = sns.catplot(kind='bar', data=gdf, x='sample_size', y='pi_value',
-                          hue='pi_comp_biased', col='M', #row='M', col='mode',
-                          hue_order=hue_order, palette='tab20', sharey=False,
-                          ci=None, zorder=-1)
-        axs.map_dataframe(sns.boxplot, x='sample_size', y='pi_value',
-                          hue='pi_comp_biased', palette='tab20',
-                          hue_order=hue_order, linewidth=1, fliersize=2,
-                          boxprops={'alpha': 0.3}, zorder=5)
-        plt.suptitle('mode = %s' % gid)
-        plt.tight_layout(rect=(0, 0, 0.85, 1))
+    #sns.set_context('notebook')
+    #for gid, gdf in pid_df.groupby('mode'):
+    axs = sns.catplot(kind='bar', data=pid_df, x='sample_size', y='pi_value',
+                      hue='pi_comp_biased', row='M', col='mode', #col='M',
+                      hue_order=hue_order, palette='tab20', sharey=False,
+                      ci=None, zorder=-1)
+    axs.map_dataframe(sns.boxplot, x='sample_size', y='pi_value',
+                      hue='pi_comp_biased', palette='tab20',
+                      hue_order=hue_order, linewidth=1, fliersize=2,
+                      boxprops={'alpha': 0.3}, zorder=5)
+        #plt.suptitle('mode = %s' % gid)
+        #plt.tight_layout(rect=(0, 0, 0.85, 1))
 
     plt.show()
 
