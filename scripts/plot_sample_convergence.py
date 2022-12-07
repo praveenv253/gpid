@@ -16,50 +16,85 @@ if __name__ == '__main__':
     #              & (pid_table['sample_size'] == 50), 'tilde'] = np.nan
 
     gt = pid_table.loc[pid_table['sample_size'].isna()].set_index(['M', 'mode'])['tilde']
+    gt.columns.set_names('pi_comp', inplace=True)
 
     index_cols = ['mode', 'M', 'sample_size', 'trial_id']
 
     pid_df = pid_table.dropna().set_index(index_cols)[['tilde', 'unbiased_tilde']]
+
+    # Normalizing
+    #pid_df['tilde'] = pid_df['tilde'].div(pid_df[('tilde', 'imxy')], axis=0)
+
     pid_df.columns.set_names(['biased', 'pi_comp'], inplace=True)
     pid_df = pid_df.rename({'tilde': True, 'unbiased_tilde': False}, axis=1, level='biased')
-    pid_df = pid_df.stack(level=(0, 1)).reset_index().rename(columns={0: 'pi_value'})
+    pid_df = pid_df.stack(level=(0, 1)) - gt.stack()
+    pid_df = pid_df.reset_index().rename(columns={0: 'pi_value'})
 
-    cols = ['M', 'sample_size', 'mode', 'tilde']
+    #pid_df = pid_df[pid_df['pi_comp'] != 'imxy']
+    #gt = gt.drop(columns=['imxy'])
+
+    #cols = ['M', 'sample_size', 'mode', 'tilde']
     #melted_df = pid_table[cols].melt(id_vars=cols[:3],
     #                                 var_name=['pid_defn', 'pi_comp'],
     #                                 value_name='pi_value')
-    melted_df = pid_df[pid_df['biased'] == True]
+    #melted_df = pid_df[pid_df['biased'] == True]
+    melted_df = pid_df
 
     ncols = melted_df['M'].nunique()
     nrows = melted_df['mode'].nunique()
-    hue_order = ['imxy', 'uix', 'uiy', 'ri', 'si']
+    pi_comps = ['imxy', 'uix', 'uiy', 'ri', 'si']
+    hue_order = sum(([(pic, True), (pic, False)] for pic in pi_comps), [])
 
-    # Actual PID values
-    fig, axs = plt.subplots(figsize=(14, 8), nrows=nrows, ncols=ncols)
-    axs = axs.flatten()
-    for ax, (group_id, group_df) in zip(axs, melted_df.groupby(['mode', 'M'])):
-        #for i, pi_val in enumerate(group_df[group_df.sample_size.isna()].pi_value):
-        for i, pi_val in enumerate(gt.xs(group_id, level=('mode', 'M')).iloc[0]):
-            ax.axhline(pi_val, c=('C%d' % i))
-        sns.boxplot(data=group_df, x='sample_size', y='pi_value', hue='pi_comp',
-                    hue_order=hue_order, boxprops={'linewidth': 0}, ax=ax)
-        ax.set_title(group_id)
-    plt.tight_layout()
-    plt.suptitle('Biased PID values')
+    cols = ['pi_comp', 'biased']
+    pid_df['pi_comp_biased'] = pid_df[cols].agg(tuple, axis=1)
+    pid_df = pid_df.drop(columns=cols)
+
+    sns.set_context('notebook')
+    for gid, gdf in pid_df.groupby('mode'):
+        axs = sns.catplot(kind='bar', data=gdf, x='sample_size', y='pi_value',
+                          hue='pi_comp_biased', col='M', #row='M', col='mode',
+                          hue_order=hue_order, palette='tab20', sharey=False,
+                          ci=None, zorder=-1)
+        axs.map_dataframe(sns.boxplot, x='sample_size', y='pi_value',
+                          hue='pi_comp_biased', palette='tab20',
+                          hue_order=hue_order, linewidth=1, fliersize=2,
+                          boxprops={'alpha': 0.3}, zorder=5)
+        plt.suptitle('mode = %s' % gid)
+        plt.tight_layout(rect=(0, 0, 0.85, 1))
+
+    plt.show()
+
+    ## Actual PID values
+    #fig, axs = plt.subplots(figsize=(14, 8), nrows=nrows, ncols=ncols, sharex=True)
+    #axs = axs.flatten()
+    #for ax, (group_id, group_df) in zip(axs, melted_df.groupby(['mode', 'M'])):
+    #    #for i, pi_val in enumerate(group_df[group_df.sample_size.isna()].pi_value):
+    #    gt_mode_m = gt.xs(group_id, level=('mode', 'M')).iloc[0]
+    #    # Normalizing ground truth
+    #    #gt_mode_m = gt_mode_m.values / gt_mode_m['imxy']
+    #    for i, pi_val in enumerate(gt_mode_m, start=1):
+    #        ax.axhline(pi_val, c=('C%d' % i))
+    #    sns.boxplot(data=group_df, x='sample_size', y='pi_value', hue='pi_comp',
+    #                hue_order=hue_order, boxprops={'linewidth': 0}, ax=ax)
+    #    ax.get_legend().remove()
+    #    ax.set_title(group_id)
+    #plt.tight_layout()
+    #plt.suptitle('Biased PID values')
 
 
 
-    melted_df = pid_df[pid_df['biased'] == False]
-    fig, axs = plt.subplots(figsize=(14, 8), nrows=nrows, ncols=ncols)
-    axs = axs.flatten()
-    for ax, (group_id, group_df) in zip(axs, melted_df.groupby(['mode', 'M'])):
-        for i, pi_val in enumerate(gt.xs(group_id, level=('mode', 'M')).iloc[0]):
-            ax.axhline(pi_val, c=('C%d' % i))
-        sns.boxplot(data=group_df, x='sample_size', y='pi_value', hue='pi_comp',
-                    hue_order=hue_order, boxprops={'linewidth': 0}, ax=ax)
-        ax.set_title(group_id)
-    plt.tight_layout()
-    plt.suptitle('Unbiased PID values')
+    #melted_df = pid_df[pid_df['biased'] == False]
+    #fig, axs = plt.subplots(figsize=(14, 8), nrows=nrows, ncols=ncols, sharex=True)
+    #axs = axs.flatten()
+    #for ax, (group_id, group_df) in zip(axs, melted_df.groupby(['mode', 'M'])):
+    #    for i, pi_val in enumerate(gt.xs(group_id, level=('mode', 'M')).iloc[0], start=1):
+    #        ax.axhline(pi_val, c=('C%d' % i))
+    #    sns.boxplot(data=group_df, x='sample_size', y='pi_value', hue='pi_comp',
+    #                hue_order=hue_order, boxprops={'linewidth': 0}, ax=ax)
+    #    ax.get_legend().remove()
+    #    ax.set_title(group_id)
+    #plt.tight_layout()
+    #plt.suptitle('Unbiased PID values')
 
 
 
@@ -120,4 +155,4 @@ if __name__ == '__main__':
 
     #print(bias_df)
 
-    plt.show()
+    #plt.show()

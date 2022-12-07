@@ -11,12 +11,17 @@ import matplotlib.pyplot as plt
 import numpy.linalg as la
 from sklearn.model_selection import KFold
 
+from gpid.generate import swap_x_and_y, merge_covs
 from gpid.tilde_pid import exact_gauss_tilde_pid
 
 
 def gen_adjacency_matrix(N, M, p, q, r, mode):
     rng = np.random.default_rng()
     A = np.zeros((N, N))
+
+    # XXX: Need a mode which has lots of synergy
+    # This could also potentially have a lot of UI_Y
+    # Combine this with zero synergy which has UI_X and RI for bit of all
 
     if mode == 'both_unique':
         B = np.array([[1, 0, 2, 0],
@@ -39,6 +44,11 @@ def gen_adjacency_matrix(N, M, p, q, r, mode):
     elif mode == 'zero_synergy':
         B = np.array([[1, 2, 0],
                       [0, 1, 2],
+                      [0, 0, 1]])
+        subnet_sizes = np.array([M, M, M])
+    elif mode == 'high_synergy':
+        B = np.array([[1, 2, 0],
+                      [0, 1, 0],
                       [0, 0, 1]])
         subnet_sizes = np.array([M, M, M])
     else:
@@ -122,6 +132,57 @@ def gauss_weighted_adj(A):
 #    return max(0.0, np.mean(cv_mis))
 
 
+def gen_cov_matrix(N, M, p, q, r, mode):
+    if mode == 'bit_of_all':
+        cov1, dm1, dx1, dy1 = gen_cov_matrix(N//2, M//2, p, q, r, mode='zero_synergy')
+        cov1, dm1, dx1, dy1 = swap_x_and_y(cov1, dm1, dx1, dy1)
+        cov2, dm2, dx2, dy2 = gen_cov_matrix(N//2, M//2, p, q, r, mode='high_synergy')
+
+        return merge_covs(cov1, cov2, dm1, dx1, dy1, dm2, dx2, dy2, random_rotn=True)
+
+    A, _ = gen_adjacency_matrix(N, M, p, q, r, mode)
+    A = gauss_weighted_adj(A)
+    #plt.matshow(A)
+    #plt.show()
+
+    dm, dx, dy = M, M, M
+
+    if mode in ['both_unique', 'fully_redundant', 'high_synergy']:
+        sigm = np.eye(dm)
+        sigx_m = np.eye(dx)
+        sigy_m = np.eye(dy)
+        hx = A[:dm, dm:dm+dx].T
+        if mode == 'fully_redundant':
+            hy = hx
+            sigw = 0.9 * np.eye(dx)   # Assumes dx == dy
+        elif mode == 'high_synergy':
+            hy = np.zeros((dy, dm))
+            sigw = 0.8 * np.eye(dx)  # Assumes dx == dy
+        else:
+            hy = A[:dm, dm+dx:].T
+            sigw = np.zeros((dx, dy))
+        cov = np.block([[sigm, sigm @ hx.T, sigm @ hy.T],
+                        [hx @ sigm, hx @ sigm @ hx.T + sigx_m, hx @ sigm @ hy.T + sigw],
+                        [hy @ sigm, hy @ sigm @ hx.T + sigw.T, hy @ sigm @ hy.T + sigy_m]])
+
+    elif mode == 'zero_synergy':
+        hx = A[:dm, dm:dm+dx].T
+        hyx = A[dm:dm+dx, dm+dx:].T
+        hy = hyx @ hx
+        sigm = np.eye(dm)
+        sigx_m = np.eye(dx)
+        covx = hx @ sigm @ hx.T + sigx_m
+        sigy_x = np.eye(dx)
+        cov = np.block([[sigm, sigm @ hx.T, sigm @ hy.T],
+                        [hx @ sigm, covx, covx @ hyx.T],
+                        [hy @ sigm, hyx @ covx, hyx @ covx @ hyx.T + sigy_x]])
+
+    else:
+        raise ValueError('Unrecognized mode %s' % mode)
+
+    return cov, dm, dx, dy
+
+
 if __name__ == '__main__':
     # Make warnings raise an error: used in the try-except block, when we get
     # a LinAlgWarning because of poorly conditioned matrices (happens when
@@ -130,7 +191,8 @@ if __name__ == '__main__':
 
     #M_vals = [10, 20, 50]
     M_vals = [10, 20]
-    modes = ['both_unique', 'fully_redundant', 'zero_synergy']
+    modes = ['both_unique', 'fully_redundant', 'zero_synergy', 'high_synergy', 'bit_of_all']
+    T = 30  # Number of trials
 
     pid_table = pd.DataFrame()
 
@@ -146,48 +208,13 @@ if __name__ == '__main__':
         #M = 20
         N = M * 3
 
-        dm, dx, dy = M, M, M
-
         for mode in modes:
             print(mode, end=': ', flush=True)
 
+            cov, dm, dx, dy = gen_cov_matrix(N, M, p, q, r, mode)
+
             cols = [(col, '') for col in config_cols]
             vals = ['sample_conv', None, None, dm, dx, dy, mode, M]
-
-            A, _ = gen_adjacency_matrix(N, M, p, q, r, mode)
-            A = gauss_weighted_adj(A)
-            #plt.matshow(A)
-            #plt.show()
-
-            if mode in ['both_unique', 'fully_redundant']:
-                sigm = np.eye(dm)
-                sigx_m = np.eye(dx)
-                sigy_m = np.eye(dy)
-                hx = A[:dm, dm:dm+dx].T
-                if mode == 'fully_redundant':
-                    hy = hx
-                    sigw = 0.9 * np.eye(dx)   # Assumes dx == dy
-                else:
-                    hy = A[:dm, dm+dx:].T
-                    sigw = np.zeros((dx, dy))
-                cov = np.block([[sigm, sigm @ hx.T, sigm @ hy.T],
-                                [hx @ sigm, hx @ sigm @ hx.T + sigx_m, hx @ sigm @ hy.T + sigw],
-                                [hy @ sigm, hy @ sigm @ hx.T + sigw.T, hy @ sigm @ hy.T + sigy_m]])
-
-            elif mode == 'zero_synergy':
-                hx = A[:dm, dm:dm+dx].T
-                hyx = A[dm:dm+dx, dm+dx:].T
-                hy = hyx @ hx
-                sigm = np.eye(dm)
-                sigx_m = np.eye(dx)
-                covx = hx @ sigm @ hx.T + sigx_m
-                sigy_x = np.eye(dx)
-                cov = np.block([[sigm, sigm @ hx.T, sigm @ hy.T],
-                                [hx @ sigm, covx, covx @ hyx.T],
-                                [hy @ sigm, hyx @ covx, hyx @ covx @ hyx.T + sigy_x]])
-
-            else:
-                raise ValueError('Unrecognized mode %s' % mode)
 
             ret = exact_gauss_tilde_pid(cov, dm, dx, dy)
             imxy, uix, uiy, ri, si = ret[2], *ret[-4:]
@@ -200,7 +227,6 @@ if __name__ == '__main__':
 
             # Compute PID on samples of different sample sizes, each T times
             rng = np.random.default_rng()
-            T = 10  # Number of trials
             sample_sizes = np.r_[100, 200, 300, 600, 1000]
             for sample_size in sample_sizes:
                 print('%d' % sample_size, end=' ', flush=True)

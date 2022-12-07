@@ -64,6 +64,10 @@ def move_cov_block_to_end(cov, i, j):
     return np.block([[cov_new, nondiag_block.T], [nondiag_block, diag_block]])
 
 
+def swap_x_and_y(cov, dm, dx, dy):
+    return move_cov_block_to_end(cov, dm, dm+dx), dm, dy, dx
+
+
 def merge_covs(cov1, cov2, dm1, dx1, dy1, dm2=None, dx2=None, dy2=None,
                random_rotn=False, seed=None):
     """

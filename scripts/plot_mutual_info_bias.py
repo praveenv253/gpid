@@ -43,14 +43,16 @@ if __name__ == '__main__':
     hue = e[['M', 'unbiased']].apply(tuple, axis=1)
     e['hue'] = hue
 
-    for mode in modes:
-        plt.figure()
-        plt.title(mode)
-        sns.barplot(data=e[e['mode'] == mode], y='imxy_1', x='sample_size', hue='hue', palette='tab20', errorbar=None, zorder=-1)
-        g = sns.boxplot(data=e[e['mode'] == mode], y='imxy_1', x='sample_size', hue='hue', palette=(['k']*6), dodge=True, zorder=2)
-        h,l = g.get_legend_handles_labels()
-        plt.legend(h[6:], l[6:], title='(M, debiased)')
-        for i, M in enumerate(M_vals):
-            plt.axhline(gt['gt_1'].xs((mode, M), level=('mode', 'M')).item(), color=('C%d' % i))
+    sns.set_context('talk')
+    fig, axs = plt.subplots(nrows=1, ncols=len(modes))
+    for i, mode in enumerate(modes):
+        axs[i].set_title(mode)
+        sns.barplot(ax=axs[i], data=e[e['mode'] == mode], y='imxy_1', x='sample_size', hue='hue', palette='tab20', errorbar=('pi', 90))
+        #g = sns.boxplot(data=e[e['mode'] == mode], y='imxy_1', x='sample_size', hue='hue', palette=(['k']*6), dodge=True, zorder=2)
+        #h,l = g.get_legend_handles_labels()
+        #plt.legend(h[6:], l[6:], title='(M, debiased)')
+        axs[i].legend(title='(M, debiased)')
+        for j, M in enumerate(M_vals):
+            axs[i].axhline(gt['gt_1'].xs((mode, M), level=('mode', 'M')).item(), color=('C%d' % j))
 
     plt.show()
