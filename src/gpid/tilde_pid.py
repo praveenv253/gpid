@@ -287,10 +287,8 @@ def exact_gauss_tilde_pid(cov, dm, dx, dy, verbose=False, ret_t_sigt=False,
                           plot=False, unbiased=False, sample_size=None):
 
     # XXX: Debiasing has not been thoroughly tested.
-    # Right now, we assume that the bias in the union information is the same
-    # as the bias in I(M ; (X, Y)).
-    # Furthermore, we do not ensure that PID quantities remain positive after
-    # removing bias.
+    # Right now, we assume that the proportion of bias in the union information
+    # is the same as the proportion of bias in I(M ; (X, Y)).
 
     if unbiased == True and sample_size is None:
         raise ValueError('Must supply sample_size when requesting unbiased estimates')
@@ -321,11 +319,13 @@ def exact_gauss_tilde_pid(cov, dm, dx, dy, verbose=False, ret_t_sigt=False,
     #union_info = obj
     union_info = objective(sig, hx, hy, dm, dx, dy, reg=1e-7)
 
-    if unbiased:
-        union_info *= debias_factor
-        union_info = max(union_info, imx, imy)
-        # Union info is lower bounded by max{I(M; X), I(M; Y)}
-        # This ensures positivity of the UI terms
+    union_info *= debias_factor
+
+    # Union info is lower bounded by max{I(M; X), I(M; Y)} and upper bounded by
+    # min{I(M; X) + I(M; Y), I(M; (X, Y))}: imposing this ensures positivity of
+    # the PID terms
+    union_info = max(union_info, imx, imy)
+    union_info = min(union_info, imx + imy, imxy_debiased)
 
     uix = union_info - imy
     uiy = union_info - imx
