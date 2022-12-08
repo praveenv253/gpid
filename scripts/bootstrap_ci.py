@@ -145,8 +145,8 @@ if __name__ == '__main__':
     modes = ['both_unique', 'fully_redundant', 'zero_synergy', 'high_synergy',
              'bit_of_all']
 
-    T = 30            # Number of trials
-    T_bootstrap = 30  # Number of bootstrap samples
+    T = 100            # Number of trials
+    T_bootstrap = 100  # Number of bootstrap samples
 
     pid_table = pd.DataFrame()
 
@@ -169,7 +169,7 @@ if __name__ == '__main__':
             cov, dm, dx, dy = gen_cov_matrix(N, M, p, q, r, mode)
 
             cols = [(col, '') for col in config_cols]
-            vals = ['sample_conv', None, None, dm, dx, dy, mode, M, None]
+            vals = ['bootstrap_ci', None, None, dm, dx, dy, mode, M, None]
 
             ret = exact_gauss_tilde_pid(cov, dm, dx, dy)
             imxy, uix, uiy, ri, si = ret[2], *ret[-4:]
@@ -202,7 +202,7 @@ if __name__ == '__main__':
                         imxy, uix, uiy, ri, si = [np.nan,] * 5
 
                     cols = [(col, '') for col in config_cols]
-                    vals = ['sample_conv', sample_size, i, dm, dx, dy, mode, M, False]
+                    vals = ['bootstrap_ci', sample_size, i, dm, dx, dy, mode, M, False]
 
                     cols.extend([('tilde', col) for col in pid_cols])
                     vals.extend([imxy, uix, uiy, ri, si])
@@ -235,7 +235,7 @@ if __name__ == '__main__':
                         imxy, uix, uiy, ri, si = [np.nan,] * 5
 
                     cols = [(col, '') for col in config_cols]
-                    vals = ['sample_conv', sample_size, i, dm, dx, dy, mode, M, True]
+                    vals = ['bootstrap_ci', sample_size, i, dm, dx, dy, mode, M, True]
 
                     cols.extend([('tilde', col) for col in pid_cols])
                     vals.extend([imxy, uix, uiy, ri, si])
@@ -247,5 +247,5 @@ if __name__ == '__main__':
 
         print()
 
-    pid_table.to_pickle('../results/bootstrap_ci.pkl.gz')
+    pid_table.to_pickle('../results/bootstrap_ci_v2.pkl.gz')
     print(pid_table)
