@@ -10,7 +10,7 @@ import seaborn as sns
 
 
 if __name__ == '__main__':
-    pid_table = pd.read_pickle('../results/sample_convergence_unbiased_v2.pkl.gz')
+    pid_table = pd.read_pickle('../results/sample_convergence_unbiased_v3.pkl.gz')
 
     #pid_table.loc[(pid_table['M'] == 20)
     #              & (pid_table['sample_size'] == 50), 'tilde'] = np.nan

@@ -304,6 +304,10 @@ def exact_gauss_tilde_pid(cov, dm, dx, dy, verbose=False, ret_t_sigt=False,
         imx = debias(imx, compute_bias(dm, dx, sample_size))
         imy = debias(imy, compute_bias(dm, dy, sample_size))
         imxy_debiased = debias(imxy, compute_bias(dm, dx + dy, sample_size))
+
+        # But ensure that the debiased imxy does not go below the debiased imx
+        # or the debiased imy, as this will make PID values negative
+        imxy_debiased = max(imxy_debiased, imx, imy)
     else:
         imxy_debiased = imxy
 

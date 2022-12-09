@@ -26,7 +26,7 @@ def jaccard_index(x):
 
 
 if __name__ == '__main__':
-    pid_table = pd.read_pickle('../results/bootstrap_ci_v2.pkl.gz')
+    pid_table = pd.read_pickle('../results/bootstrap_ci_v3.pkl.gz')
 
     gt = pid_table.loc[pid_table['sample_size'].isna()].set_index(['M', 'mode'])['tilde']
     gt.columns.set_names('pi_comp', inplace=True)

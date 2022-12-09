@@ -192,7 +192,7 @@ if __name__ == '__main__':
     #M_vals = [10, 20, 50]
     M_vals = [10, 20]
     modes = ['both_unique', 'fully_redundant', 'zero_synergy', 'high_synergy', 'bit_of_all']
-    T = 30  # Number of trials
+    T = 100  # Number of trials
 
     pid_table = pd.DataFrame()
 
@@ -280,5 +280,5 @@ if __name__ == '__main__':
 
     #pid_table.to_pickle('../results/sample_convergence.pkl.gz')
     #pid_table.to_pickle('../results/sample_convergence_cv_mi.pkl.gz')
-    pid_table.to_pickle('../results/sample_convergence_unbiased_v2.pkl.gz')
+    pid_table.to_pickle('../results/sample_convergence_unbiased_v3.pkl.gz')
     print(pid_table)

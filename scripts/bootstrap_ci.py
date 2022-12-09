@@ -247,5 +247,5 @@ if __name__ == '__main__':
 
         print()
 
-    pid_table.to_pickle('../results/bootstrap_ci_v2.pkl.gz')
+    pid_table.to_pickle('../results/bootstrap_ci_v3.pkl.gz')
     print(pid_table)
