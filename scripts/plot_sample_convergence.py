@@ -4,6 +4,7 @@ from __future__ import print_function, division
 
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib as mpl
 
 import pandas as pd
 import seaborn as sns
@@ -27,7 +28,7 @@ if __name__ == '__main__':
 
     pid_df.columns.set_names(['biased', 'pi_comp'], inplace=True)
     pid_df = pid_df.rename({'tilde': True, 'unbiased_tilde': False}, axis=1, level='biased')
-    pid_df = pid_df.stack(level=(0, 1)) - gt.stack()
+    pid_df = pid_df.stack(level=(0, 1)) #- gt.stack()
     pid_df = pid_df.reset_index().rename(columns={0: 'pi_value'})
 
     #pid_df = pid_df[pid_df['pi_comp'] != 'imxy']
@@ -47,19 +48,56 @@ if __name__ == '__main__':
 
     cols = ['pi_comp', 'biased']
     pid_df['pi_comp_biased'] = pid_df[cols].agg(tuple, axis=1)
-    pid_df = pid_df.drop(columns=cols)
+    #pid_df = pid_df.drop(columns=cols)
 
-    #sns.set_context('notebook')
-    #for gid, gdf in pid_df.groupby('mode'):
-    axs = sns.catplot(kind='bar', data=pid_df, x='sample_size', y='pi_value',
-                      hue='pi_comp_biased', row='M', col='mode', #col='M',
-                      hue_order=hue_order, palette='tab20', sharey=False,
-                      ci=None, zorder=-1)
-    axs.map_dataframe(sns.boxplot, x='sample_size', y='pi_value',
-                      hue='pi_comp_biased', palette='tab20',
-                      hue_order=hue_order, linewidth=1, fliersize=2,
-                      boxprops={'alpha': 0.3}, zorder=5)
-        #plt.suptitle('mode = %s' % gid)
+    tab20 = mpl.cm.get_cmap('tab20')
+    colors = tab20(np.arange(10))
+    #palette = dict(zip(hue_order, tab20(np.arange(10))))
+
+    sns.set_context('notebook')
+    for gid, gdf in pid_df.groupby('mode'):
+        #fig, axs = plt.subplots(nrows=2, ncols=5, sharex=True, sharey=True)
+        #axs = axs.flatten()
+        #for ax, (subgid, subgdf) in zip(axs, gdf.groupby(['M', 'sample_size'])):
+        #    sns.barplot(ax=ax,
+        #                data=subgdf,
+        #                x='pi_comp',
+        #                y='pi_value',
+        #                hue='biased',
+        #                hue_order=(True, False),
+        #                ci=None, zorder=-1)
+        #    sns.boxplot(ax=ax,
+        #                data=subgdf,
+        #                x='pi_comp',
+        #                y='pi_value',
+        #                hue='biased',
+        #                hue_order=(True, False),
+        #                zorder=5)
+        axs = sns.catplot(kind='bar', data=gdf, y='pi_value', x='pi_comp', #x='sample_size',
+                          #hue='pi_comp_biased', row='M', #col='mode', #col='M',
+                          row='M', col='sample_size', #hue='pi_comp_biased',
+                          hue='biased',
+                          hue_order=(True, False),
+                          #hue_order=hue_order,
+                          sharey='row',
+                          ci=None, zorder=-1)
+        axs.map_dataframe(sns.boxplot, y='pi_value', x='pi_comp', #x='sample_size',
+                          palette='tab20', #hue='pi_comp_biased', hue_order=hue_order,
+                          hue='biased', hue_order=(True, False),
+                          linewidth=1, #fliersize=2,
+                          zorder=5)
+                          #boxprops={'alpha': 0.3}, zorder=5)
+
+        for ax in axs.axes.flatten():
+            #ax.get_legend().remove()
+            boxes = ax.findobj(mpl.patches.Rectangle)
+            for color, box in zip(list(colors)[::2] + list(colors)[1::2], boxes):
+                box.set_facecolor(color)
+            boxes = ax.findobj(mpl.patches.PathPatch)
+            for color, box in zip(np.hstack((colors[:, :3], 0.3 * colors[:, [3]])), boxes):
+                box.set_facecolor(color)
+
+        plt.suptitle('mode = %s' % gid)
         #plt.tight_layout(rect=(0, 0, 0.85, 1))
 
     plt.show()

@@ -47,7 +47,7 @@ if __name__ == '__main__':
     fig, axs = plt.subplots(nrows=1, ncols=len(modes))
     for i, mode in enumerate(modes):
         axs[i].set_title(mode)
-        sns.barplot(ax=axs[i], data=e[e['mode'] == mode], y='imxy_1', x='sample_size', hue='hue', palette='tab20', errorbar=('pi', 90))
+        sns.barplot(ax=axs[i], data=e[e['mode'] == mode], y='imxy_1', x='sample_size', hue='hue', palette='tab20', ci='sd') #errorbar=('pi', 90))
         #g = sns.boxplot(data=e[e['mode'] == mode], y='imxy_1', x='sample_size', hue='hue', palette=(['k']*6), dodge=True, zorder=2)
         #h,l = g.get_legend_handles_labels()
         #plt.legend(h[6:], l[6:], title='(M, debiased)')
