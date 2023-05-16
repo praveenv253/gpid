@@ -43,43 +43,54 @@ def get_pids_for_session(session_id, structures, data):
     # See if this is different for change/non-change and familiar/novel
     is_change_flash, is_non_change_flash = get_change_non_change_flash_masks(session_stim_table)
 
-    time_of_interest = np.r_[50:250]  # Milliseconds
-
-    # Sum spike counts in time of interest; shape (num_neurons, num_flashes)
-    activity_of_interest = unit_tensor[:, :, time_of_interest].sum(axis=2)
+    #time_of_interest = np.r_[50:250]  # Milliseconds
+    times_of_interest = np.r_[0:250].reshape((-1, 50))  # Milliseconds
+    cond_names = ['change', 'non_change']
 
     pids = []
-    cond_names = ['change', 'non_change']
-    for name, flash_mask in zip(cond_names,
-                                [is_change_flash, is_non_change_flash]):
-        # Compute covariance matrix
-        dm, dx, dy = (unit_indices_by_area[area].size for area in structures)
-        activity_subset = activity_of_interest[:, flash_mask].T
+    for time_of_interest in times_of_interest:
+        t = time_of_interest[0]
+        print(t, end='', flush=True)
 
-        try:
-            # Use the top-10 principal components in each area to keep things manageable
-            n_comps = 10
-            area_activity_pcs = []
-            expld_vars = []
-            for area in structures:
-                pca = PCA(n_components=n_comps)
-                area_activity_pc = pca.fit_transform(activity_subset[:, unit_indices_by_area[area]])
-                area_activity_pcs.append(area_activity_pc)
-                expld_vars.append(pca.explained_variance_ratio_)
-            activity_pcs = np.hstack(area_activity_pcs)
-            dm, dx, dy = [n_comps,] * 3
+        # Sum spike counts in time of interest; shape (num_neurons, num_flashes)
+        activity_of_interest = unit_tensor[:, :, time_of_interest].sum(axis=2)
 
-            cov = np.cov(activity_pcs.T)
-            ret = exact_gauss_tilde_pid(cov, dm, dx, dy, unbiased=True,
-                                        sample_size=flash_mask.sum())
-            #(imx, imy, imxy_debiased, union_info, obj, uix, uiy, ri, si) = ret
-            imxy_debiased, uix, uiy, ri, si = (ret[2], *ret[-4:])
-        except:
-            imxy_debiased, uix, uiy, ri, si = [np.nan,] * 5
+        for name, flash_mask in zip(cond_names,
+                                    [is_change_flash, is_non_change_flash]):
+            print(name[0], end='', flush=True)
 
-        pids.append({'imxy': imxy_debiased, 'uix': uix, 'uiy': uiy, 'ri': ri, 'si': si})
+            # Compute covariance matrix
+            dm, dx, dy = (unit_indices_by_area[area].size for area in structures)
+            activity_subset = activity_of_interest[:, flash_mask].T
 
-    pid_df = pd.DataFrame.from_records(pids, index=cond_names)
+            try:
+                # Use the top-10 principal components in each area to keep things manageable
+                n_comps = 10
+                area_activity_pcs = []
+                expld_vars = []
+                for area in structures:
+                    pca = PCA(n_components=n_comps)
+                    area_activity_pc = pca.fit_transform(activity_subset[:, unit_indices_by_area[area]])
+                    area_activity_pcs.append(area_activity_pc)
+                    expld_vars.append(pca.explained_variance_ratio_)
+                activity_pcs = np.hstack(area_activity_pcs)
+                dm, dx, dy = [n_comps,] * 3
+
+                cov = np.cov(activity_pcs.T)
+                ret = exact_gauss_tilde_pid(cov, dm, dx, dy, unbiased=True,
+                                            sample_size=flash_mask.sum())
+                #(imx, imy, imxy_debiased, union_info, obj, uix, uiy, ri, si) = ret
+                imxy_debiased, uix, uiy, ri, si = (ret[2], *ret[-4:])
+            except:
+                imxy_debiased, uix, uiy, ri, si = [np.nan,] * 5
+
+            pids.append({'imxy': imxy_debiased, 'uix': uix, 'uiy': uiy, 'ri': ri, 'si': si})
+
+        print(' ', end='')
+
+    index = pd.MultiIndex.from_product([times_of_interest[:, 0], cond_names])
+    pid_df = pd.DataFrame.from_records(pids, index=index)
+
     return pid_df
 
 
@@ -89,7 +100,7 @@ if __name__ == '__main__':
 
     # Area-wise noise alignment: each of these areas is examined separately
     #structures = ['VISp', 'VISl', 'VISal', 'VISam', 'VISpm']
-    structures = ['VISp', 'VISl', 'VISal']
+    structures = ['VISp', 'VISl', 'VISam']
 
     min_unit_count_thresh = 20
     session_indices = area_unit_counts.index[
@@ -120,9 +131,9 @@ if __name__ == '__main__':
         print()
 
     ret = pd.concat(ret)
-    ret.index.set_names(['session_id', 'cond'], inplace=True)
+    ret.index.set_names(['session_id', 'time', 'cond'], inplace=True)
 
-    ret = ret.unstack()
+    ret = ret.unstack().unstack()
 
     # Make this table map from session_id to mouse_id and experience_level
     mice_with_both_fam_and_nov = (
@@ -135,17 +146,18 @@ if __name__ == '__main__':
     # merging with the results for each session in ret.
     # The dummy column level is to avoid a future deprecation warning
     mice_with_both_fam_and_nov.columns = pd.MultiIndex.from_product([
-        ['dummy'], mice_with_both_fam_and_nov.columns
+        ['dummy1'], ['dummy2'], mice_with_both_fam_and_nov.columns
     ])
 
     df = pd.merge(mice_with_both_fam_and_nov, ret, how='inner',
                   left_on='session_id', right_index=True)
     # Set the index back to mouse_id and experience_level
-    df = df.set_index([('dummy', 'mouse_id'), ('dummy', 'experience_level')])
+    df = df.set_index([('dummy1', 'dummy2', 'mouse_id'),
+                       ('dummy1', 'dummy2', 'experience_level')])
     df.index.rename(['mouse_id', 'experience_level'], inplace=True)
-    df.columns.rename(['pid_comp', 'cond'], inplace=True)
+    df.columns.rename(['pid_comp', 'cond', 'time'], inplace=True)
     # Pivot image_name from columns into the index
-    df = df.stack()
+    df = df.stack().stack()
 
     # Separate the shared images in the novel context
     #shared_images = ['im083_r', 'im111_r']
