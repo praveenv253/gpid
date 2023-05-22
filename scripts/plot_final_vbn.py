@@ -88,6 +88,8 @@ if __name__ == '__main__':
 
 
 
+    print('Number of mice: ', pid_df['mouse_id'].nunique())
+
     #x = data_normed.query('exp_cond == "Familiar_change" and time == 50 and pid_comp == "ri"')['pid_val']
     #y = data_normed.query('exp_cond == "Familiar_non_change" and time == 50 and pid_comp == "ri"')['pid_val']
     #_, pval = stats.ranksums(x, y)

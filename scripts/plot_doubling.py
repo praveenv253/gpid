@@ -12,6 +12,7 @@ if __name__ == '__main__':
 
     # pid_values has shape (num_gains, num_doubles, 5)
     pid_values = data['pid_vals']
+    # Don't plot values close to zero
     pid_values = np.ma.masked_array(pid_values, mask=(pid_values < 1e-3))
 
     #gains = np.linspace(0, 3, 10)
