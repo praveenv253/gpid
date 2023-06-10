@@ -33,7 +33,7 @@ def get_change_non_change_flash_masks(session_stim_table):
     return is_change_flash, is_non_change_flash
 
 
-def get_pids_for_session(session_id, structures, data):
+def get_pids_for_session(session_id, structures, data, n_comps):
     ret = get_stim_table_and_unit_tensor_for_session(session_id, structures, data)
     session_stim_table, unit_tensor, unit_indices_by_area = ret
 
@@ -64,8 +64,7 @@ def get_pids_for_session(session_id, structures, data):
             activity_subset = activity_of_interest[:, flash_mask].T
 
             try:
-                # Use the top-10 principal components in each area to keep things manageable
-                n_comps = 10
+                # Use the top n_comps principal components in each area to keep things manageable
                 area_activity_pcs = []
                 expld_vars = []
                 for area in structures:
@@ -98,10 +97,15 @@ if __name__ == '__main__':
     data = load_all_data()
     area_unit_counts = get_ecephys_sessions_area_unit_counts(data)
 
-    # Area-wise noise alignment: each of these areas is examined separately
-    #structures = ['VISp', 'VISl', 'VISal', 'VISam', 'VISpm']
-    structures = ['VISp', 'VISl', 'VISam']
+    # Areas to analyze
+    structures = ['VISp', 'VISl', 'VISal']
+    #structures = ['VISp', 'VISl', 'VISam']
 
+    # Number of principal components to consider each area
+    #n_comps = 10
+    n_comps = 20
+
+    # Select sessions with at least 20 neurons in each area
     min_unit_count_thresh = 20
     session_indices = area_unit_counts.index[
         (area_unit_counts[structures] > min_unit_count_thresh).all(axis=1)
@@ -127,7 +131,7 @@ if __name__ == '__main__':
         #if i >= 4:
         #    break
         print('%d, %d' % (i, session_id), end=': ', flush=True)
-        ret[session_id] = get_pids_for_session(session_id, structures, data)
+        ret[session_id] = get_pids_for_session(session_id, structures, data, n_comps)
         print()
 
     ret = pd.concat(ret)
@@ -171,4 +175,8 @@ if __name__ == '__main__':
     cleaned_df = df.drop(bad_mouse_ids, level='mouse_id')
 
     print(cleaned_df)
-    cleaned_df.to_csv('vbn-pids.csv')
+
+    filename = ('../results/vbn-pids-time--'
+                + '-'.join(s.lower() for s in structures)
+                + '--%d.csv' % n_comps)
+    cleaned_df.to_csv(filename)

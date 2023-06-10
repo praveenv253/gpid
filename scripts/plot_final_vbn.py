@@ -13,8 +13,15 @@ from scipy import stats
 
 
 if __name__ == '__main__':
-    #pid_df = pd.read_csv('vbn-pids-time--visp-visl-visal.csv')
-    pid_df = pd.read_csv('vbn-pids-time--visp-visl-visam.csv')
+    structures = ('VISp', 'VISl', 'VISal')
+    #structures = ('VISp', 'VISl', 'VISam')
+    #top_pcs = 10
+    top_pcs = 20
+
+    filename = ('../results/vbn-pids-time--' + '-'.join(s.lower() for s in structures)
+                + '--%d.csv' % top_pcs)
+
+    pid_df = pd.read_csv(filename)
     pid_df_normed = pid_df.copy()
     cols = ['uix', 'uiy', 'ri', 'si']
     pid_df_normed[cols] = pid_df_normed[cols].div(pid_df_normed[['imxy']].values)
@@ -43,9 +50,11 @@ if __name__ == '__main__':
     annotator.configure(test='Mann-Whitney')
     annotator.apply_and_annotate()
 
-    plt.title('Redundancy betw 3 visual cortical areas')
+    plt.title('Redundancy betw 3 visual cortical areas\n'
+              + '(top %d principal components)' % top_pcs)
     plt.xlabel('Time after stimulus onset (ms)')
-    plt.ylabel('Redundancy, $RI(\mathrm{VISp} : \mathrm{VISl} ; \mathrm{VISam})$ (bits)')
+    plt.ylabel('Redundancy, $RI(\mathrm{%s} : \mathrm{%s} ; \mathrm{%s})$ (bits)'
+               % structures)
 
     h, l = plt.gca().get_legend_handles_labels()
     plt.legend(h[2:], ['Change', 'Non-change'])
@@ -53,6 +62,7 @@ if __name__ == '__main__':
     plt.tight_layout()
 
 
+    ## Normalized plots
 
     data_normed = pd.melt(pid_df_normed, id_vars=['mouse_id', 'experience_level', 'time', 'cond'],
                           value_vars=['uix', 'uiy', 'ri', 'si'],
@@ -76,10 +86,11 @@ if __name__ == '__main__':
     annotator.configure(test='Mann-Whitney')
     annotator.apply_and_annotate()
 
-    plt.title('Redundancy fraction betw 3 visual cortical areas')
+    plt.title('Redundancy fraction betw 3 visual cortical areas\n'
+              + '(top %d principal components)' % top_pcs)
     plt.xlabel('Time after stimulus onset (ms)')
-    plt.ylabel(r'$RI(\mathrm{VISp} : \mathrm{VISl} ; \mathrm{VISam})'
-               r'/ I(\mathrm{VISp} ; \mathrm{VISl} , \mathrm{VISam})$')
+    plt.ylabel(r'$RI(\mathrm{%s} : \mathrm{%s} ; \mathrm{%s})' % structures
+               + r'/ I(\mathrm{%s} ; \mathrm{%s} , \mathrm{%s})$' % structures)
 
     h, l = plt.gca().get_legend_handles_labels()
     plt.legend(h[2:], ['Change', 'Non-change'])

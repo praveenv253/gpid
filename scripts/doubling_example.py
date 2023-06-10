@@ -70,4 +70,4 @@ if __name__ == '__main__':
     pid_vals = np.array(pid_vals).reshape((-1, num_doubles, 5))
     joblib.dump({'covs': covs, 'pid_vals': pid_vals,
                  'gains': gains, 'num_doubles': num_doubles},
-                'doubling_example.pkl')
+                '../results/doubling_example.pkl')
