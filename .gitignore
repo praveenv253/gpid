@@ -130,4 +130,6 @@ dmypy.json
 
 # Other
 reports/
+results/
+figures/
 *.swp

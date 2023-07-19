@@ -1,0 +1,22 @@
+name: gpid_minimal
+channels:
+  - pytorch
+  - conda-forge
+  - defaults
+dependencies:
+  - cvxpy
+  - h5py
+  - hdf5
+  - ipython
+  - jupyterlab
+  - matplotlib
+  - mkl
+  - numpy
+  - pandas
+  - python=3.9
+  - scikit-learn
+  - scipy
+  - seaborn
+  - pip:
+    - statannotations
+    - joblib>=1.2.0

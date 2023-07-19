@@ -11,7 +11,7 @@ setup(
     packages=find_packages(where='src'),
     package_dir={'': 'src'},
     python_requires='>=3.5',
-    install_requires=['numpy', 'scipy', 'pandas', 'cvxpy', 'matplotlib'],
+    install_requires=['numpy', 'scipy', 'pandas', 'cvxpy', 'matplotlib', 'jupyter'],
     #setup_requires=['pytest-runner', ],
     #tests_require=['pytest', ],
     license='MIT',
