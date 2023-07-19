@@ -41,7 +41,7 @@ if __name__ == '__main__':
     ax.set_ylabel('Partial information (bits)', fontsize=labelsize)
     ax.set_xticks(rows['id'])
     ax.set_xticklabels(['%.2f' % val for val in rows.sigma_y__x],
-                       rotation=45, ha='right')
+                       rotation=45, rotation_mode='anchor', ha='right')
     ax.tick_params(axis='both', which='major', labelsize=ticksize)
     ax.grid(True)
 
@@ -57,7 +57,7 @@ if __name__ == '__main__':
     ax.set_xlabel(r'Noise correlation, $\rho$', fontsize=labelsize)
     ax.set_xticks(rows['id'])
     ax.set_xticklabels(['%.2f' % val for val in rows.rho],
-                       rotation=45, ha='right')
+                       rotation=45, rotation_mode='anchor', ha='right')
     ax.tick_params(axis='both', which='major', labelsize=ticksize)
     ax.grid(True)
 
@@ -76,7 +76,7 @@ if __name__ == '__main__':
     ax.set_xlabel(r'Noise correlation, $\rho$', fontsize=labelsize)
     ax.set_xticks(rows['id'])
     ax.set_xticklabels(['%.2f' % val for val in rows.rho],
-                       rotation=45, ha='right')
+                       rotation=45, rotation_mode='anchor', ha='right')
     ax.tick_params(axis='both', which='major', labelsize=ticksize)
     ax.grid(True)
 
@@ -84,17 +84,17 @@ if __name__ == '__main__':
 
     # Legend (tied to last axis)
     handles = [lines[(c, '-', '')] for c in colors]
-    texts = ['$I(M;(X,Y))$', '$UI_X$', '$UI_Y$', '$RI$', '$SI$']
+    texts = [r'$I(M\;\!; (X, Y\;\!\;\!))$', '$UI_X$', '$UI_Y$', '$RI$', '$SI$']
     color_legend = ax.legend(handles, texts, loc='center left', frameon=False,
-                             bbox_to_anchor=(1, 0.7), fontsize=legendsize,
+                             bbox_to_anchor=(1, 0.75), fontsize=legendsize,
                              title='PID component', title_fontsize=labelsize)
     # https://matplotlib.org/stable/tutorials/intermediate/legend_guide.html#multiple-legends-on-the-same-axes
     ax.add_artist(color_legend)
 
     handles = [lines[('k', ls, m)] for (ls, m) in zip(linestyles, markers)]
-    texts = ['$\sim$-PID', '$\delta$-PID', 'MMI-PID', 'Ground truth']
+    texts = ['$\sim_G$-PID', '$\delta_G$-PID', 'MMI-PID', 'Ground truth']
     defn_legend = ax.legend(handles, texts, loc='center left', frameon=False,
-                            bbox_to_anchor=(1, 0.2), fontsize=legendsize,
+                            bbox_to_anchor=(1, 0.1), fontsize=legendsize,
                             title='PID definition', title_fontsize=labelsize)
 
     plt.tight_layout()

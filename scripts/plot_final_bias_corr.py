@@ -103,7 +103,7 @@ if __name__ == '__main__':
 
     h, l = plt.gca().get_legend_handles_labels()
     ax = plt.gca()
-    legend1 = ax.legend(h[:10:2], ['$I(M : X ; Y)$', '$UI_X$', '$UI_Y$', '$RI$', '$SI$'],
+    legend1 = ax.legend(h[:10:2], [r'$I(M\;\!; (X, Y\;\!\;\!))$', '$UI_X$', '$UI_Y$', '$RI$', '$SI$'],
                         loc='upper right', frameon=False)
     ax.add_artist(legend1)
 

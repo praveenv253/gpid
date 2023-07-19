@@ -17,9 +17,14 @@ if __name__ == '__main__':
     #structures = ('VISp', 'VISl', 'VISam')
     #top_pcs = 10
     top_pcs = 20
+    eq_samp = False
 
-    filename = ('../results/vbn-pids-time--' + '-'.join(s.lower() for s in structures)
-                + '--%d.csv' % top_pcs)
+    if not eq_samp:
+        filename = ('../results/vbn-pids-time--' + '-'.join(s.lower() for s in structures)
+                    + '--%d.csv' % top_pcs)
+    else:
+        filename = ('../results/vbn-pids-time--eq-samp--' + '-'.join(s.lower() for s in structures)
+                    + '--%d.csv' % top_pcs)
 
     pid_df = pd.read_csv(filename)
     pid_df_normed = pid_df.copy()
@@ -34,7 +39,7 @@ if __name__ == '__main__':
 
     sns.set_context('talk')
 
-    plt.figure(figsize=(7, 7))
+    fig_unnorm = plt.figure(figsize=(7, 7))
     plot_params = dict(data=subdata, x='time', y='pid_val', hue='cond')
     g = sns.stripplot(**plot_params, dodge=True)
     sns.boxplot(**plot_params, boxprops=dict(alpha=0.5))
@@ -70,7 +75,7 @@ if __name__ == '__main__':
     data_normed['exp_cond'] = data_normed['experience_level'] + '_' + data_normed['cond']
     subdata_normed = data_normed.query('pid_comp == "ri" and experience_level == "Familiar"')
 
-    plt.figure(figsize=(7, 7))
+    fig_norm = plt.figure(figsize=(7, 7))
     plot_params = dict(data=subdata_normed, x='time', y='pid_val', hue='cond')
     g = sns.stripplot(**plot_params, dodge=True)
     sns.boxplot(**plot_params, boxprops=dict(alpha=0.5))
@@ -90,14 +95,12 @@ if __name__ == '__main__':
               + '(top %d principal components)' % top_pcs)
     plt.xlabel('Time after stimulus onset (ms)')
     plt.ylabel(r'$RI(\mathrm{%s} : \mathrm{%s} ; \mathrm{%s})' % structures
-               + r'/ I(\mathrm{%s} ; \mathrm{%s} , \mathrm{%s})$' % structures)
+               + r'/ I(\mathrm{%s} ; (\mathrm{%s} , \mathrm{%s}))$' % structures)
 
     h, l = plt.gca().get_legend_handles_labels()
     plt.legend(h[2:], ['Change', 'Non-change'])
 
     plt.tight_layout()
-
-
 
     print('Number of mice: ', pid_df['mouse_id'].nunique())
 
@@ -121,4 +124,12 @@ if __name__ == '__main__':
     #_, pval = stats.ranksums(x, y)
     #print('RI Novel change vs no-change t = 100: %f' % pval)
 
-    plt.show()
+    plt.figure(fig_unnorm)
+    plt.savefig(filename.replace('results', 'figures')
+                .replace('vbn-pids-time', 'vbn-ri')
+                .replace('csv', 'pdf'))
+    plt.figure(fig_norm)
+    plt.savefig(filename.replace('results', 'figures')
+                .replace('vbn-pids-time', 'vbn-ri-norm')
+                .replace('csv', 'pdf'))
+    #plt.show()

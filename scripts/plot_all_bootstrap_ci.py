@@ -60,6 +60,7 @@ if __name__ == '__main__':
     modes = pid_df['mode'].unique()
 
     for m, mode in it.product(mvals, modes):
+        print((m, mode))
 
         gdf = pid_df.query('M == @m and mode == @mode')
         subgt = gt.loc[(m, mode)]
@@ -85,7 +86,7 @@ if __name__ == '__main__':
 
         h, l = plt.gca().get_legend_handles_labels()
         ax = plt.gca()
-        legend1 = ax.legend(h[:10:2], ['$I(M : X ; Y)$', '$UI_X$', '$UI_Y$', '$RI$', '$SI$'],
+        legend1 = ax.legend(h[:10:2], [r'$I(M\;\!; (X, Y\;\!\;\!))$', '$UI_X$', '$UI_Y$', '$RI$', '$SI$'],
                             loc='upper right', frameon=False)
         ax.add_artist(legend1)
 
@@ -102,7 +103,7 @@ if __name__ == '__main__':
 
         plt.xlabel('Sample size')
         plt.ylabel('PID value (bits) with CIs')
-        plt.title('Bootstrap CIs in the "%s" setup ($d = %d$)' % (mode, m))
+        plt.title('Bootstrap CIs in the "%s" setup ($d = %d$)' % (mode.replace('_', '-'), m))
         plt.tight_layout()
 
         plt.savefig('../figures/bootstrap-ci--%s--%d.pdf' % (mode, m))

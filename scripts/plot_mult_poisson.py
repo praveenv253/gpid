@@ -43,7 +43,8 @@ if __name__ == '__main__':
                            marker=markers[i])[0]
             lines[(colors[j], linestyles[i], markers[i])] = line
 
-    fig.suptitle(r'PIDs for multivariate Poisson example', fontsize=titlesize)
+    fig.suptitle(r'PID values (left) and PID values normalized by $I(M\;\!; (X, Y\;\!\;\!))$ (right)'
+                 + '\nin a multivariate Poisson spike-count simulation', fontsize=titlesize)
     #ax.set_title(r'PIDs for multivariate Poisson example', fontsize=titlesize)
     ax.set_xlabel(r'Weight from $M_1$ to $X$', fontsize=labelsize)
     ax.set_ylabel('Partial information (bits)', fontsize=labelsize)
@@ -83,23 +84,21 @@ if __name__ == '__main__':
 
     # Legend
     handles = [lines[(c, '-', '')] for c in colors]
-    texts = ['$I(M;(X,Y))$',
-             r'$UI_X$ (l) / $\overline{UI}_X$ (r)', r'$UI_Y$ (l) / $\overline{UI}_X$ (r)',
-             r'$RI$ (l) / $\overline{RI}$ (r)', r'$SI$ (l) / $\overline{SI}$ (r)']
+    texts = ['$I(M\;\!;(X, Y\;\!\;\!))$', r'$UI_X$', r'$UI_Y$', r'$RI$', r'$SI$']
     color_legend = ax.legend(handles, texts, loc='center left', frameon=False,
-                             bbox_to_anchor=(1, 0.7), fontsize=legendsize,
+                             bbox_to_anchor=(1, 0.75), fontsize=legendsize,
                              title='PID component', title_fontsize=labelsize)
     # https://matplotlib.org/stable/tutorials/intermediate/legend_guide.html#multiple-legends-on-the-same-axes
     ax.add_artist(color_legend)
 
     handles = [lines[('k', ls, m)] for (ls, m) in zip(linestyles, markers)]
-    texts = ['$\sim$-PID', '$\delta$-PID', 'MMI-PID', 'Ground truth']
+    texts = ['$\sim_G$-PID', '$\delta_G$-PID', 'MMI-PID', 'Ground truth\nPoisson $\sim$-PID']
     defn_legend = ax.legend(handles, texts, loc='center left', frameon=False,
-                            bbox_to_anchor=(1, 0.2), fontsize=legendsize,
+                            bbox_to_anchor=(1, 0.15), fontsize=legendsize,
                             title='PID definition', title_fontsize=labelsize)
 
     #plt.tight_layout()
-    plt.subplots_adjust(left=0.07, right=0.8, bottom=0.12, wspace=0.25)
+    plt.subplots_adjust(left=0.07, right=0.8, bottom=0.12, top=0.85, wspace=0.25)
     plt.savefig('../figures/mult-poisson-ex.pdf')
     #plt.show()
 
