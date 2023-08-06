@@ -33,7 +33,7 @@ def get_change_non_change_flash_masks(session_stim_table):
     return is_change_flash, is_non_change_flash
 
 
-def get_pids_for_session(session_id, structures, data, n_comps):
+def get_pids_for_session(session_id, structures, data, n_comps, eq_samp=False):
     ret = get_stim_table_and_unit_tensor_for_session(session_id, structures, data)
     session_stim_table, unit_tensor, unit_indices_by_area = ret
 
@@ -46,6 +46,19 @@ def get_pids_for_session(session_id, structures, data, n_comps):
     #time_of_interest = np.r_[50:250]  # Milliseconds
     times_of_interest = np.r_[0:250].reshape((-1, 50))  # Milliseconds
     cond_names = ['change', 'non_change']
+
+    # TODO Count the number of change samples for each image and store them
+    # Then, randomly sample that many non-change samples for corresp. images
+    #img_num_changes = session_stim_table[is_change_flash].groupby('image_name').count()
+
+    if eq_samp:
+        # XXX Quick hack: choose same number of non-change flashes
+        num_change_flashes = is_change_flash.sum()
+        non_change_ids = is_non_change_flash.index[is_non_change_flash]
+        rng = np.random.default_rng()
+        sub_non_change_ids = rng.choice(non_change_ids, num_change_flashes, replace=False)
+        is_non_change_flash.loc[:] = False
+        is_non_change_flash.loc[sub_non_change_ids] = True
 
     pids = []
     for time_of_interest in times_of_interest:
@@ -94,6 +107,9 @@ def get_pids_for_session(session_id, structures, data, n_comps):
 
 
 if __name__ == '__main__':
+    # Whether to use equal number of samples for change and non-change flashes
+    eq_samp = False
+
     data = load_all_data()
     area_unit_counts = get_ecephys_sessions_area_unit_counts(data)
 
@@ -131,7 +147,8 @@ if __name__ == '__main__':
         #if i >= 4:
         #    break
         print('%d, %d' % (i, session_id), end=': ', flush=True)
-        ret[session_id] = get_pids_for_session(session_id, structures, data, n_comps)
+        ret[session_id] = get_pids_for_session(session_id, structures, data,
+                                               n_comps, eq_samp=eq_samp)
         print()
 
     ret = pd.concat(ret)
@@ -177,6 +194,7 @@ if __name__ == '__main__':
     print(cleaned_df)
 
     filename = ('../results/vbn-pids-time--'
+                + ('eq-samp--' if eq_samp else '')
                 + '-'.join(s.lower() for s in structures)
                 + '--%d.csv' % n_comps)
     cleaned_df.to_csv(filename)

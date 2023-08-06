@@ -18,6 +18,7 @@ if __name__ == '__main__':
     #top_pcs = 10
     top_pcs = 20
     eq_samp = False
+    #eq_samp = True
 
     if not eq_samp:
         filename = ('../results/vbn-pids-time--' + '-'.join(s.lower() for s in structures)
