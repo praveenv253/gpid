@@ -26,8 +26,7 @@ def plot(pid_values, expansion_factor, gains, suptitle, ylabel):
         ax.grid(True)
         ax.set_title(titles[i], fontsize=titlesize)
         ax.set_xticks(expansion_factor)
-        ax.set_xticklabels(expansion_factor, rotation=45, ha='right',
-                           rotation_mode='anchor')
+        ax.set_xticklabels(expansion_factor, rotation=90)
         #ax.set_yticks(2.0**np.arange(-2, 8))
         #ax.set_yticklabels(['%g' % i for i in 2.0**np.arange(-2, 8)])
         ax.tick_params(axis='both', labelsize=ticksize)
@@ -52,8 +51,10 @@ if __name__ == '__main__':
     gains = data['gains']
     num_doubles = data['num_doubles']
 
+    pid_values = np.array(pid_values).reshape((-1, num_doubles, 5))
+
     # Get ground truth data
-    pid_table = pd.read_pickle('../results/gain_angle_exs.pkl.gz')
+    pid_table = pd.read_pickle('../results/gain_angle_exs_099.pkl.gz')
     gt = pid_table[pid_table['desc'] == 'gain']['gt'].values  # shape (10, 5)
 
     expansion_factor = 2**(np.arange(num_doubles) + 1)  # Dim of M, X, Y
@@ -75,5 +76,23 @@ if __name__ == '__main__':
                    ylabel='Rel. error in PID value')
     plt.savefig('../figures/doubling-rel-error.pdf')
     plt.close()
+
+    abs_error_df = pd.DataFrame(abs_error.max(axis=2),
+                                index=pd.Index(gains, name='gain'),
+                                columns=expansion_factor).reset_index()
+    rel_error_df = pd.DataFrame(rel_error.max(axis=2),
+                                index=pd.Index(gains, name='gain'),
+                                columns=expansion_factor).reset_index()
+
+    pid_names = ['I(M; (X,Y))', 'UI_X', 'UI_Y', 'RI', 'SI']
+    pid_df = pd.DataFrame(pid_values[-1, :, :], index=expansion_factor, columns=pid_names)
+    df = pd.concat({'Absolute error (bits)': abs_error_df.iloc[9, 1:],
+                    'Relative error': rel_error_df.iloc[9, 1:],
+                    'Compute time (s)': pd.Series(data['time_taken'][-1], index=expansion_factor)}, axis=1)
+    pid_df = pid_df.join(df)
+    pid_df.index.rename('Dimension', inplace=True)
+
+    pd.set_option('display.precision', 2)
+    print(pid_df)
 
     #plt.show()

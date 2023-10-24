@@ -25,6 +25,8 @@ if __name__ == '__main__':
     theta = 0
     gain_y = np.sqrt(2)
     gains = np.linspace(0, 3, 10)
+    gains[3] = 0.99  # A gain of 1 is unstable
+
     for i, gain_x in enumerate(gains):
         print(i, end=' ', flush=True)
 
@@ -114,7 +116,7 @@ if __name__ == '__main__':
 
     print()
 
-    pid_table.to_pickle('../results/gain_angle_exs.pkl.gz')
+    pid_table.to_pickle('../results/gain_angle_exs_099.pkl.gz')
 
     print(pid_table)
     assert np.allclose((pid_table['tilde'] - pid_table['gt']).dropna().to_numpy(), 0, atol=1e-5)
