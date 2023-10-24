@@ -16,18 +16,19 @@ if __name__ == '__main__':
     structures = ('VISp', 'VISl', 'VISal')
     #structures = ('VISp', 'VISl', 'VISam')
     #top_pcs = 10
-    top_pcs = 20
+    #top_pcs = 20
+    top_pcs = 'max'
     eq_samp = False
     #eq_samp = True
 
-    if not eq_samp:
-        filename = ('../results/vbn-pids-time--' + '-'.join(s.lower() for s in structures)
-                    + '--%d.csv' % top_pcs)
-    else:
-        filename = ('../results/vbn-pids-time--eq-samp--' + '-'.join(s.lower() for s in structures)
-                    + '--%d.csv' % top_pcs)
+    filename = ('../results/vbn-pids-time--'
+                + ('eq-samp--' if eq_samp else '')
+                + '-'.join(s.lower() for s in structures)
+                + ('--%d' % top_pcs if type(top_pcs) == int else '--%s' % top_pcs)
+                + '.csv')
 
     pid_df = pd.read_csv(filename)
+
     pid_df_normed = pid_df.copy()
     cols = ['uix', 'uiy', 'ri', 'si']
     pid_df_normed[cols] = pid_df_normed[cols].div(pid_df_normed[['imxy']].values)
@@ -36,6 +37,11 @@ if __name__ == '__main__':
                    value_vars=['imxy', 'uix', 'uiy', 'ri', 'si'],
                    var_name='pid_comp', value_name='pid_val')
     data['exp_cond'] = data['experience_level'] + '_' + data['cond']
+
+    if top_pcs == 'max':
+        # XXX: Quick-fix - remove really large outliers due to poor convergence
+        data.loc[data['pid_val'] > 50, 'pid_val'] = np.nan
+
     subdata = data.query('pid_comp == "ri" and experience_level == "Familiar"')
 
     sns.set_context('talk')
@@ -57,7 +63,8 @@ if __name__ == '__main__':
     annotator.apply_and_annotate()
 
     plt.title('Redundancy betw 3 visual cortical areas\n'
-              + '(top %d principal components)' % top_pcs)
+              + ('(top %d principal components)' % top_pcs
+                 if type(top_pcs) == int else '(%s principal components)' % top_pcs))
     plt.xlabel('Time after stimulus onset (ms)')
     plt.ylabel('Redundancy, $RI(\mathrm{%s} : \mathrm{%s} ; \mathrm{%s})$ (bits)'
                % structures)
@@ -93,7 +100,8 @@ if __name__ == '__main__':
     annotator.apply_and_annotate()
 
     plt.title('Redundancy fraction betw 3 visual cortical areas\n'
-              + '(top %d principal components)' % top_pcs)
+              + ('(top %d principal components)' % top_pcs
+                 if type(top_pcs) == int else '(%s principal components)' % top_pcs))
     plt.xlabel('Time after stimulus onset (ms)')
     plt.ylabel(r'$RI(\mathrm{%s} : \mathrm{%s} ; \mathrm{%s})' % structures
                + r'/ I(\mathrm{%s} ; (\mathrm{%s} , \mathrm{%s}))$' % structures)
@@ -125,12 +133,12 @@ if __name__ == '__main__':
     #_, pval = stats.ranksums(x, y)
     #print('RI Novel change vs no-change t = 100: %f' % pval)
 
-    plt.figure(fig_unnorm)
-    plt.savefig(filename.replace('results', 'figures')
-                .replace('vbn-pids-time', 'vbn-ri')
-                .replace('csv', 'pdf'))
-    plt.figure(fig_norm)
-    plt.savefig(filename.replace('results', 'figures')
-                .replace('vbn-pids-time', 'vbn-ri-norm')
-                .replace('csv', 'pdf'))
-    #plt.show()
+    #plt.figure(fig_unnorm)
+    #plt.savefig(filename.replace('results', 'figures')
+    #            .replace('vbn-pids-time', 'vbn-ri')
+    #            .replace('csv', 'pdf'))
+    #plt.figure(fig_norm)
+    #plt.savefig(filename.replace('results', 'figures')
+    #            .replace('vbn-pids-time', 'vbn-ri-norm')
+    #            .replace('csv', 'pdf'))
+    plt.show()

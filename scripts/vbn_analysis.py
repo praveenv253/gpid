@@ -61,6 +61,7 @@ def get_pids_for_session(session_id, structures, data, n_comps, eq_samp=False):
         is_non_change_flash.loc[sub_non_change_ids] = True
 
     pids = []
+    nn_comps_list = []
     for time_of_interest in times_of_interest:
         t = time_of_interest[0]
         print(t, end='', flush=True)
@@ -68,6 +69,8 @@ def get_pids_for_session(session_id, structures, data, n_comps, eq_samp=False):
         # Sum spike counts in time of interest; shape (num_neurons, num_flashes)
         activity_of_interest = unit_tensor[:, :, time_of_interest].sum(axis=2)
 
+        nn_comps = np.inf
+        # Order is important when n_comps == 'max': change flash must run first
         for name, flash_mask in zip(cond_names,
                                     [is_change_flash, is_non_change_flash]):
             print(name[0], end='', flush=True)
@@ -75,18 +78,32 @@ def get_pids_for_session(session_id, structures, data, n_comps, eq_samp=False):
             # Compute covariance matrix
             dm, dx, dy = (unit_indices_by_area[area].size for area in structures)
             activity_subset = activity_of_interest[:, flash_mask].T
+            # activity_subset now has shape (num_flashes, num_neurons)
+
+            if n_comps == 'max':
+                # Take the minimum over the number of neurons in each area,
+                # as well as the number of trials.
+                # For non-change flashes, we should use the same number of PCA
+                # components as for change flashes. This is ensured by including
+                # nn_comps (from the previous iteration) in the minimum.
+                # TODO: Take the minimum against the rank of activity_subset,
+                # divided by 3, instead of against the shape
+                nn_comps = min(dm, dx, dy, activity_subset.shape[0] // 3, nn_comps)
+                nn_comps_list.append(nn_comps)
+            else:
+                nn_comps = n_comps
 
             try:
-                # Use the top n_comps principal components in each area to keep things manageable
+                # Use the top nn_comps principal components in each area to keep things manageable
                 area_activity_pcs = []
                 expld_vars = []
                 for area in structures:
-                    pca = PCA(n_components=n_comps)
+                    pca = PCA(n_components=nn_comps)
                     area_activity_pc = pca.fit_transform(activity_subset[:, unit_indices_by_area[area]])
                     area_activity_pcs.append(area_activity_pc)
                     expld_vars.append(pca.explained_variance_ratio_)
                 activity_pcs = np.hstack(area_activity_pcs)
-                dm, dx, dy = [n_comps,] * 3
+                dm, dx, dy = [nn_comps,] * 3
 
                 cov = np.cov(activity_pcs.T)
                 ret = exact_gauss_tilde_pid(cov, dm, dx, dy, unbiased=True,
@@ -99,6 +116,9 @@ def get_pids_for_session(session_id, structures, data, n_comps, eq_samp=False):
             pids.append({'imxy': imxy_debiased, 'uix': uix, 'uiy': uiy, 'ri': ri, 'si': si})
 
         print(' ', end='')
+
+    if n_comps == 'max':
+        print(nn_comps_list)
 
     index = pd.MultiIndex.from_product([times_of_interest[:, 0], cond_names])
     pid_df = pd.DataFrame.from_records(pids, index=index)
@@ -119,7 +139,8 @@ if __name__ == '__main__':
 
     # Number of principal components to consider each area
     #n_comps = 10
-    n_comps = 20
+    #n_comps = 20
+    n_comps = 'max'
 
     # Select sessions with at least 20 neurons in each area
     min_unit_count_thresh = 20
@@ -196,5 +217,6 @@ if __name__ == '__main__':
     filename = ('../results/vbn-pids-time--'
                 + ('eq-samp--' if eq_samp else '')
                 + '-'.join(s.lower() for s in structures)
-                + '--%d.csv' % n_comps)
+                + ('--%d' % n_comps if type(n_comps) == int else '--%s' % n_comps)
+                + '.csv')
     cleaned_df.to_csv(filename)
