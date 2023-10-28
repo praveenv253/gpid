@@ -25,7 +25,7 @@ if __name__ == '__main__':
     legendsize = 14
     ticksize = 12
 
-    fig, axs = plt.subplots(nrows=1, ncols=2, figsize=(10, 5), sharey=True)
+    fig, axs = plt.subplots(nrows=1, ncols=3, figsize=(15, 5))
     axs = axs.flatten()
 
     # Gain
@@ -45,8 +45,28 @@ if __name__ == '__main__':
     ax.tick_params(axis='both', which='major', labelsize=ticksize)
     ax.grid(True)
 
-    # Angle
+
+    # Gain error
     ax = axs[1]
+    gain_rows = pid_table[pid_table.desc == 'gain']
+    for i, pid_defn in enumerate(pid_defns[:-1]):
+        for j, pid_atom in enumerate(pid_atoms):
+            ax.semilogy(gain_rows['id'],
+                        abs(gain_rows[(pid_defn, pid_atom)] - gain_rows[('gt', pid_atom)]),
+                        color=colors[j], linestyle=linestyles[i], marker=markers[i])
+
+    ax.set_title(r'Error in gain example', fontsize=titlesize)
+    ax.set_xlabel(r'Gain in $X_1$, $\alpha$', fontsize=labelsize)
+    ax.set_ylabel('Error (bits)', fontsize=labelsize)
+    ax.set_xticks(gain_rows['id'])
+    ax.set_xticklabels(['%.2f' % val for val in gain_rows.gain_x],
+                       rotation=45, rotation_mode='anchor', ha='right')
+    ax.tick_params(axis='both', which='major', labelsize=ticksize)
+    ax.grid(True)
+
+
+    # Angle
+    ax = axs[2]
     lines = {}  # Dictionary to hold all line handles for legend
     angle_rows = pid_table[pid_table.desc == 'angle']
     for i, pid_defn in enumerate(pid_defns):
@@ -58,6 +78,7 @@ if __name__ == '__main__':
 
     ax.set_title(r'Rotation of $X$ w.r.t. $Y$', fontsize=titlesize)
     ax.set_xlabel(r'Angle, $\theta$', fontsize=labelsize)
+    ax.set_ylabel('Partial information (bits)', fontsize=labelsize)
     angle_rows = pid_table[pid_table.desc == 'angle']
     ax.set_xticks(angle_rows['id'])
     ax.set_xticklabels(['%.2f' % val for val in angle_rows.theta],
@@ -69,7 +90,7 @@ if __name__ == '__main__':
     handles = [lines[(c, '-', '')] for c in colors]
     texts = [r'$I(M\;\!; (X, Y\;\!\;\!))$', '$UI_X$', '$UI_Y$', '$RI$', '$SI$']
     color_legend = ax.legend(handles, texts, loc='center left', frameon=False,
-                             bbox_to_anchor=(1, 0.7), fontsize=legendsize,
+                             bbox_to_anchor=(1, 0.77), fontsize=legendsize,
                              title='PID component', title_fontsize=labelsize)
     # https://matplotlib.org/stable/tutorials/intermediate/legend_guide.html#multiple-legends-on-the-same-axes
     ax.add_artist(color_legend)
