@@ -16,8 +16,8 @@ if __name__ == '__main__':
     structures = ('VISp', 'VISl', 'VISal')
     #structures = ('VISp', 'VISl', 'VISam')
     #top_pcs = 10
-    #top_pcs = 20
-    top_pcs = 'max'
+    top_pcs = 20
+    #top_pcs = 'max'
     eq_samp = False
     #eq_samp = True
 
@@ -28,6 +28,10 @@ if __name__ == '__main__':
                 + '.csv')
 
     pid_df = pd.read_csv(filename)
+
+    if top_pcs != 'max':
+        pid_df = pid_df.set_index(['mouse_id', 'experience_level', 'time', 'cond']).unstack(['experience_level', 'time', 'cond']).dropna()
+        pid_df = pid_df.stack(['experience_level', 'time', 'cond']).reset_index()
 
     pid_df_normed = pid_df.copy()
     cols = ['uix', 'uiy', 'ri', 'si']
@@ -51,11 +55,12 @@ if __name__ == '__main__':
     g = sns.stripplot(**plot_params, dodge=True)
     sns.boxplot(**plot_params, boxprops=dict(alpha=0.5))
 
-    pairs = [[(t1, 'change'), (t2, 'change')]
-             for t1, t2 in zip([0, 50, 100, 150], [50, 100, 150, 200])]
-    pairs.extend([[(t1, 'non_change'), (t2, 'non_change')]
-                  for t1, t2 in zip([0, 50, 100, 150], [50, 100, 150, 200])])
-    pairs = sum(([i, j] for i, j in zip(pairs[:4], pairs[4:])), [])  # Reorder
+    pairs = []
+    #pairs = [[(t1, 'change'), (t2, 'change')]
+             #for t1, t2 in zip([0, 50, 100, 150], [50, 100, 150, 200])]
+    #pairs.extend([[(t1, 'non_change'), (t2, 'non_change')]
+                  #for t1, t2 in zip([0, 50, 100, 150], [50, 100, 150, 200])])
+    #pairs = sum(([i, j] for i, j in zip(pairs[:4], pairs[4:])), [])  # Reorder
     pairs.extend([[(t, 'change'), (t, 'non_change')] for t in [0, 50, 100, 150, 200]])
 
     annotator = Annotator(g, pairs, **plot_params)
@@ -111,7 +116,11 @@ if __name__ == '__main__':
 
     plt.tight_layout()
 
+    print()
     print('Number of mice: ', pid_df['mouse_id'].nunique())
+    print(pid_df
+          .set_index(['mouse_id', 'experience_level', 'time', 'cond'])
+          .unstack(['experience_level', 'time', 'cond']).dropna())
 
     #x = data_normed.query('exp_cond == "Familiar_change" and time == 50 and pid_comp == "ri"')['pid_val']
     #y = data_normed.query('exp_cond == "Familiar_non_change" and time == 50 and pid_comp == "ri"')['pid_val']
