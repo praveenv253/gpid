@@ -378,7 +378,12 @@ def exact_gauss_tilde_pid(cov, dm, dx, dy, verbose=False, ret_t_sigt=False,
     else:
         imxy_debiased = imxy
 
-    debias_factor = imxy_debiased / imxy
+    # debias_factor = imxy_debiased / imxy
+    ## Add if-else to avoid errors when imxy == 0
+    if imxy > 0:
+        debias_factor = imxy_debiased / imxy
+    else:
+        debias_factor = 1
 
     #sig = exact_tilde_union_info_minimizer(hx, hy, plot=plot)
     sig, obj = exact_tilde_union_info_minimizer(hx, hy, plot=plot, ret_obj=True, reg=reg)
